@@ -1,6 +1,7 @@
 <?php
-$MESS["TK_MAIN_INSTALL_NAME"] = "Модуль дополнительных настроек сайта";
-$MESS["TK_MAIN_INSTALL_DESCRIPTION"] = "Расширенные функции";
-$MESS["TK_MAIN_INSTALL_TITLE"] = "Установка модуля";
-$MESS["TK_MAIN_INSTALL_DB_ERROR"] = "Не могу соединиться с базой данных. Проверьте правильность введенных параметров";
-?>
+defined('B_PROLOG_INCLUDED') || die;
+
+$MESS[ 'MSMAIN.MODULE_NAME' ] = 'Работа с сделками ';
+$MESS[ 'MSMAIN.MODULE_DESC' ] = 'Расширение функций CRM: позволяет вести логирование полей сделок и последующее сохранение в историю и в timeline сделки. Вывод курс валют в интерфейсе crm, подсветка сделок по стадиям, настройка уведомлений при работе с сделками (создание собственных условий слежения за сделкой и информирования сотрудников в bitrix24, почта и телеграм).';
+$MESS[ 'MSMAIN.PARTNER_NAME' ] = 'msmain';
+$MESS[ 'MSMAIN.PARTNER_URI' ] = 'https://MSMAIN.ru/';

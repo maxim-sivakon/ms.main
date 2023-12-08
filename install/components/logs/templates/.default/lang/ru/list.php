@@ -1,0 +1,10 @@
+<?php
+defined('B_PROLOG_INCLUDED') || die;
+
+$MESS[ 'MSMAIN.LIST_TITLE' ] = 'LOGS LIST';
+$MESS[ 'MSMAIN.ADD' ] = 'Добавить';
+
+$MESS[ 'MSMAIN.INTERFACE_TOOLBAR_LIST_TEXT' ] = 'Добавить';
+$MESS[ 'MSMAIN.INTERFACE_TOOLBAR_LIST_TITLE' ] = 'Добавить';
+$MESS[ 'MSMAIN.INTERFACE_TOOLBAR_EDIT_TEXT' ] = 'Редактировать';
+$MESS[ 'MSMAIN.INTERFACE_TOOLBAR_EDIT_TITLE' ] = 'Редактировать';

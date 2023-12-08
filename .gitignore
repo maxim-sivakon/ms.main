@@ -1,0 +1,4 @@
+#idea files and files MacOS
+.idea
+.DS_Store
+.vscode

@@ -1,121 +1,149 @@
-<?php
+<?php defined('B_PROLOG_INCLUDED') || die;
+IncludeModuleLangFile(__FILE__);
 
-use Bitrix\Main\Localization\Loc;
-
-Loc::loadMessages(__FILE__);
-
-if (class_exists('tk_main'))
-{
+if (class_exists("ms_main")) {
     return;
 }
 
-class tk_main extends CModule
+
+use MS\Main\Entity\LogsTable;
+
+use Bitrix\Main\Application;
+use Bitrix\Main\Config\Option;
+use Bitrix\Main\EventManager;
+use Bitrix\Main\Loader;
+use Bitrix\Main\Localization\Loc;
+use Bitrix\Main\ModuleManager;
+
+class ms_main extends CModule
 {
-    var $MODULE_ID           = "tk.main";
+    const MODULE_ID = 'ms.main';
+    var $MODULE_ID = self::MODULE_ID;
     var $MODULE_VERSION;
     var $MODULE_VERSION_DATE;
     var $MODULE_NAME;
     var $MODULE_DESCRIPTION;
     var $MODULE_CSS;
-    var $MODULE_GROUP_RIGHTS = "Y";
+    var $strError  = '';
 
-    public function __construct()
+    function __construct()
     {
         $arModuleVersion = [];
+        include(dirname(__FILE__).'/version.php');
+        $this->MODULE_VERSION = $arModuleVersion[ 'VERSION' ];
+        $this->MODULE_VERSION_DATE = $arModuleVersion[ 'VERSION_DATE' ];
 
-        include(__DIR__.'/version.php');
+        $this->MODULE_NAME = Loc::getMessage('MSMAIN.MODULE_NAME');
+        $this->MODULE_DESCRIPTION = Loc::getMessage('MSMAIN.MODULE_DESC');
 
-        $this->MODULE_VERSION = $arModuleVersion[ "VERSION" ];
-        $this->MODULE_VERSION_DATE = $arModuleVersion[ "VERSION_DATE" ];
-
-        $this->MODULE_NAME = Loc::getMessage("TK_MAIN_INSTALL_NAME");
-        $this->MODULE_DESCRIPTION = Loc::getMessage("TK_MAIN_INSTALL_DESCRIPTION");
-    }
-
-
-    function InstallDB()
-    {
-
-        global $DB, $APPLICATION;
-        $connection = \Bitrix\Main\Application::getConnection();
-        $errors = null;
-
-        if (!$DB->TableExists('b_tk_main'))
-        {
-            $errors = $DB->RunSQLBatch($_SERVER['DOCUMENT_ROOT'] . '/bitrix/modules/' . $this->MODULE_ID . '/install/db/' . strtolower($connection->getType()) . '/install.sql');
-        }
-
-//        var_dump($errors);
-//        die();
-
-        if (!empty($errors))
-        {
-            $APPLICATION->ThrowException(implode("", $errors));
-            return false;
-        }
-
-        RegisterModule($this->MODULE_ID);
-
-        return true;
-    }
-
-    function UnInstallDB()
-    {
-        global $DB, $APPLICATION;
-        $connection = \Bitrix\Main\Application::getConnection();
-        $errors = null;
-
-
-            $errors = $DB->RunSQLBatch($_SERVER["DOCUMENT_ROOT"]."/bitrix/modules/" . $this->MODULE_ID . "/install/db/".strtolower($connection->getType())."/uninstall.sql");
-
-            if (!empty($errors))
-            {
-                $APPLICATION->ThrowException(implode("", $errors));
-                return false;
-            }
-            \Bitrix\Main\Config\Option::delete($this->MODULE_ID);
-
-
-        UnRegisterModule($this->MODULE_ID);
-
-        return true;
-    }
-
-    function InstallEvents()
-    {
-        return true;
-    }
-
-    function UnInstallEvents()
-    {
-        return true;
-    }
-
-    function InstallFiles()
-    {
-        // перемещаем файлы в публичную часть
-        CopyDirFiles($_SERVER['DOCUMENT_ROOT'] . '/bitrix/modules/' . $this->MODULE_ID . '/public', $_SERVER['DOCUMENT_ROOT'] . '/', true, true);
-
-        return true;
-    }
-
-    function UnInstallFiles()
-    {
-        DeleteDirFiles($_SERVER['DOCUMENT_ROOT'] . '/bitrix/modules/' . $this->MODULE_ID . '/public', $_SERVER['DOCUMENT_ROOT'] . '/');
-        return true;
+        $this->PARTNER_NAME = Loc::getMessage('MSMAIN.PARTNER_NAME');
+        $this->PARTNER_URI = Loc::getMessage('MSMAIN.PARTNER_URI');
     }
 
     function DoInstall()
     {
-        $this->InstallFiles();
+        ModuleManager::registerModule(self::MODULE_ID);
+
         $this->InstallDB();
+        $this->InstallFiles();
+        $this->InstallEvents();
     }
 
     function DoUninstall()
     {
+        $this->UnInstallEvents();
         $this->UnInstallFiles();
         $this->UnInstallDB();
+
+        ModuleManager::unRegisterModule(self::MODULE_ID);
+    }
+
+    function InstallDB()
+    {
+        Loader::includeModule('ms.main');
+
+        $db = Application::getConnection();
+
+        $logsEntity = LogsTable::getEntity();
+        if (!$db->isTableExists($logsEntity->getDBTableName())) {
+            $logsEntity->createDbTable();
+        }
+    }
+
+    function UnInstallDB()
+    {
+        // Не существенно в данном примере.
+    }
+
+    function InstallEvents()
+    {
+        $eventManager = EventManager::getInstance();
+
+        //        $eventManager->registerEventHandlerCompatible(
+        //            'crm',
+        //            'OnAfterCrmControlPanelBuild',
+        //            self::MODULE_ID,
+        //            '\Academy\CrmStores\Handler\CrmMenu',
+        //            'addStores'
+        //        );
+
+        //        $eventManager->registerEventHandlerCompatible(
+        //            'main',
+        //            'OnUserTypeBuildList',
+        //            self::MODULE_ID,
+        //            '\Academy\CrmStores\UserType\StoreBinding',
+        //            'GetUserTypeDescription'
+        //        );
+    }
+
+    function UnInstallEvents()
+    {
+        $eventManager = EventManager::getInstance();
+
+        //        $eventManager->unRegisterEventHandler(
+        //            'crm',
+        //            'OnAfterCrmControlPanelBuild',
+        //            self::MODULE_ID,
+        //            '\Academy\CrmStores\Handler\CrmMenu',
+        //            'addStores'
+        //        );
+        //
+        //        $eventManager->unRegisterEventHandler(
+        //            'main',
+        //            'OnUserTypeBuildList',
+        //            self::MODULE_ID,
+        //            '\Academy\CrmStores\UserType\StoreBinding',
+        //            'GetUserTypeDescription'
+        //        );
+    }
+
+    function InstallFiles()
+    {
+        $documentRoot = Application::getDocumentRoot();
+
+        CopyDirFiles(__DIR__.'/components', $documentRoot.'/bitrix/components/ms.main/', true, true);
+        CopyDirFiles(__DIR__.'/public', $documentRoot.'/ms.main/', true, true);
+        CopyDirFiles(__DIR__.'/js', $documentRoot.'/bitrix/js/ms.main/', true, true);
+        CopyDirFiles(__DIR__.'/css', $documentRoot.'/bitrix/css/ms.main/', true, true);
+
+        CUrlRewriter::Add([
+            'CONDITION' => '#^/ms.main/crm/logs/#',
+            'RULE'      => '',
+            'ID'        => 'ms.main:logs',
+            'PATH'      => '/ms.main/crm/logs/index.php',
+        ]);
+    }
+
+    function UnInstallFiles()
+    {
+        DeleteDirFilesEx('/ms.main');
+        DeleteDirFilesEx('/bitrix/components/ms.main');
+        DeleteDirFilesEx('/bitrix/js/ms.main');
+        DeleteDirFilesEx('/bitrix/css/ms.main');
+
+        CUrlRewriter::Delete([
+            'ID'   => 'ms.main:logs',
+            'PATH' => '/ms.main/crm/logs/index.php',
+        ]);
     }
 }
-
-?>
