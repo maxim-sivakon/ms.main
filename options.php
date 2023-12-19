@@ -21,6 +21,22 @@ Loader::includeModule($module_id);
 $formAction = $APPLICATION->GetCurPage().'?mid='.htmlspecialcharsbx($mid).'&lang='.LANGUAGE_ID;
 $dealFieldsOption = MS\Main\Helpers::getDealFieldsOption();
 
+
+$textOld = "";
+$textNew = [
+    "IS_MANUAL_OPPORTUNITY" => "Y",
+    "ASSIGNED_BY_ID"        => "168",
+    "UF_CRM_1702620235"     => "30.12.2023 17:56:00",
+    "~DATE_MODIFY"          => "now()",
+    "MODIFY_BY_ID"          => 409,
+    "ID"                    => 53029
+];
+
+
+?>
+<pre><?= var_dump($dealFieldsOption); ?></pre><?php
+die();
+
 $tabs = [
     [
         'DIV'   => 'MAIN',

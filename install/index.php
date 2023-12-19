@@ -77,44 +77,17 @@ class ms_main extends CModule
 
     function InstallEvents()
     {
-        $eventManager = EventManager::getInstance();
-
-        //        $eventManager->registerEventHandlerCompatible(
-        //            'crm',
-        //            'OnAfterCrmControlPanelBuild',
-        //            self::MODULE_ID,
-        //            '\Academy\CrmStores\Handler\CrmMenu',
-        //            'addStores'
-        //        );
-
-        //        $eventManager->registerEventHandlerCompatible(
-        //            'main',
-        //            'OnUserTypeBuildList',
-        //            self::MODULE_ID,
-        //            '\Academy\CrmStores\UserType\StoreBinding',
-        //            'GetUserTypeDescription'
-        //        );
+        $eventManager = \Bitrix\Main\EventManager::getInstance();
+        $eventManager->registerEventHandlerCompatible("crm", "OnBeforeCrmDealUpdate", $this->MODULE_ID,
+            "\\MS\\Main\\Handler\\LogHandler", "SaveLog");
     }
 
     function UnInstallEvents()
     {
-        $eventManager = EventManager::getInstance();
+        $eventManager = \Bitrix\Main\EventManager::getInstance();
+        $eventManager->unRegisterEventHandler("crm", "OnBeforeCrmDealUpdate", $this->MODULE_ID,
+            "\\MS\\Main\\Handler\\LogHandler", "SaveLog");
 
-        //        $eventManager->unRegisterEventHandler(
-        //            'crm',
-        //            'OnAfterCrmControlPanelBuild',
-        //            self::MODULE_ID,
-        //            '\Academy\CrmStores\Handler\CrmMenu',
-        //            'addStores'
-        //        );
-        //
-        //        $eventManager->unRegisterEventHandler(
-        //            'main',
-        //            'OnUserTypeBuildList',
-        //            self::MODULE_ID,
-        //            '\Academy\CrmStores\UserType\StoreBinding',
-        //            'GetUserTypeDescription'
-        //        );
     }
 
     function InstallFiles()

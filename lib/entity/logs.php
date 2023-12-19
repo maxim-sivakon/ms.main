@@ -10,13 +10,19 @@ use Bitrix\Main\ORM\Fields\DateField;
 use Bitrix\Main\ORM\Fields\DatetimeField;
 use Bitrix\Main\ORM\Fields\IntegerField;
 use Bitrix\Main\UserTable;
-use DateTime;
+
+//use DateTime;
 
 class LogsTable extends \Bitrix\Main\Entity\DataManager
 {
     public static function getTableName()
     {
         return 'ms_main_logs';
+    }
+
+    public static function getFilePath()
+    {
+        return __FILE__;
     }
 
     public static function getMap()
@@ -26,11 +32,7 @@ class LogsTable extends \Bitrix\Main\Entity\DataManager
                 ['primary' => true, 'autocomplete' => true, 'title' => Loc::getMessage('MSMAIN.ENTITY.FIELD_ID')]),
             new StringField('NAME', ['title' => Loc::getMessage('MSMAIN.ENTITY.FIELD_NAME')]),
             new StringField('TYPE_EVENT', ['title' => Loc::getMessage('MSMAIN.ENTITY.FIELD_TYPE_EVENT')]),
-            new DatetimeField("DATE_CREATE_LOG", [
-                "default_value" => function () {
-                    return new DateTime();
-                }, 'title'      => Loc::getMessage('MSMAIN.ENTITY.FIELD_DATE_CREATE_LOG')
-            ]),
+            new DatetimeField('DATE_CREATE_LOG', ['title' => Loc::getMessage('MSMAIN.ENTITY.FIELD_DATE_CREATE_LOG')]),
             new IntegerField('USER_CREATE_LOG', ['title' => Loc::getMessage('MSMAIN.ENTITY.FIELD_USER_CREATE_LOG')]),
             new DateField('LOCAL_TIME_USER', ['title' => Loc::getMessage('MSMAIN.ENTITY.FIELD_LOCAL_TIME_USER')]),
             new IntegerField('ID_DEAL', ['title' => Loc::getMessage('MSMAIN.ENTITY.FIELD_ID_DEAL')]),
@@ -56,4 +58,5 @@ class LogsTable extends \Bitrix\Main\Entity\DataManager
             )
         ];
     }
+
 }
