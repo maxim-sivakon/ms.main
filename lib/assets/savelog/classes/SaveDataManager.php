@@ -2,12 +2,14 @@
 
 namespace MS\Main\Assets\Savelog\Classes;
 
-use Bitrix\Main\Loader;
 use Bitrix\Main\LoaderException;
 use Bitrix\Main\Type\DateTime;
 
 use MS\Main\Assets\Savelog\Interface\SaveLogInterface;
 use MS\Main\Entity\LogsTable;
+use MS\Main\Helpers;
+use MS\Main\HelperFields;
+use MS\Main\CTypeEventModify;
 
 class SaveDataManager implements SaveLogInterface
 {
@@ -18,23 +20,30 @@ class SaveDataManager implements SaveLogInterface
      */
     public function save(array $arFieldsDeal): bool|int
     {
-        $resultSave = false;
 
-        if ($arFieldsDeal[ 'MODIFY_BY_ID' ]) {
-            Loader::includeModule('crm');
+        if ($arFieldsDeal[ 'MODIFY_BY_ID' ] > 0) {
+
+            global $APPLICATION;
+            $resultSave = false;
+            $listCodeFields = HelperFields::listCodeFields($arFieldsDeal);
+            $oldFieldsDeal = Helpers::getDealData($arFieldsDeal[ 'ID' ], $listCodeFields);
+            $resultCheckEvent = CTypeEventModify::checkEvent($arFieldsDeal, $oldFieldsDeal);
+
+            $typeDevice = Helpers::detectUserDevice();
+            $listCodeFields = HelperFields::listCodeFields($resultCheckEvent['FIELDS']);
 
             $result = [
-                'NAME'                     => 'Text event',
-                'TYPE_EVENT'               => 'test',
+                'NAME'                     => $resultCheckEvent['NAME'],
+                'TYPE_EVENT'               => $resultCheckEvent['TYPE_EVENT'],
                 'USER_CREATE_LOG'          => $arFieldsDeal[ 'MODIFY_BY_ID' ],
                 'DATE_CREATE_LOG'          => new DateTime(),
                 'ID_DEAL'                  => $arFieldsDeal[ 'ID' ],
-                'TYPE_DEVICE'              => 'mac',
-                'LIST_MODIFI_FIELDS'       => serialize($arFieldsDeal),
-                'COUNT_MODIFI_FIELDS'      => count($arFieldsDeal),
-                'LIST_MODIFI_FIELDS_VALUE' => serialize($arFieldsDeal),
-                'USER_IP'                  => '0.0.0.0',
-                'USER_URL'                 => 'yyy.ru'
+                'TYPE_DEVICE'              => $typeDevice->getUserAgent(),
+                'LIST_MODIFI_FIELDS'       => serialize($resultCheckEvent['FIELDS']),
+                'COUNT_MODIFI_FIELDS'      => count($listCodeFields),
+                'LIST_MODIFI_FIELDS_VALUE' => serialize(HelperFields::checkingFields($oldFieldsDeal, $resultCheckEvent['FIELDS'])),
+                'USER_IP'                  => $typeDevice->getHttpHeaders()["HTTP_X_FORWARDED_FOR"],
+                'USER_URL'                 => $APPLICATION->GetCurPage()
             ];
 
             $id = 0;
@@ -42,8 +51,7 @@ class SaveDataManager implements SaveLogInterface
             if ($result->isSuccess()) {
                 $id = $result->getId();
             }
-            var_dump($arFieldsDeal);
-            die();
+
 
         }
 

@@ -5,9 +5,15 @@ defined('B_PROLOG_INCLUDED') || die;
  * @var string $mid module id from GET
  */
 
-use Bitrix\Main\Config\Configuration;
+$module_id = 'ms.main';
 use Bitrix\Main\Loader;
+Loader::includeModule($module_id);
+
+use Bitrix\Main\Config\Configuration;
 use Bitrix\Main\Localization\Loc;
+
+use MS\Main\Helpers;
+use MS\Main\HelperFields;
 
 global $APPLICATION, $USER;
 
@@ -15,27 +21,8 @@ if (!$USER->IsAdmin()) {
     return;
 }
 
-$module_id = 'ms.main';
-Loader::includeModule($module_id);
-
 $formAction = $APPLICATION->GetCurPage().'?mid='.htmlspecialcharsbx($mid).'&lang='.LANGUAGE_ID;
-$dealFieldsOption = MS\Main\Helpers::getDealFieldsOption();
-
-
-$textOld = "";
-$textNew = [
-    "IS_MANUAL_OPPORTUNITY" => "Y",
-    "ASSIGNED_BY_ID"        => "168",
-    "UF_CRM_1702620235"     => "30.12.2023 17:56:00",
-    "~DATE_MODIFY"          => "now()",
-    "MODIFY_BY_ID"          => 409,
-    "ID"                    => 53029
-];
-
-
-?>
-<pre><?= var_dump($dealFieldsOption); ?></pre><?php
-die();
+$dealFieldsOption = HelperFields::getDealFieldsOption();
 
 $tabs = [
     [
@@ -108,6 +95,24 @@ $options = [
                 $dealFieldsOption
             ]
         ],
+        "Строгая проверка множественных полей",
+        ["note" => 'Строгая проверка позволяет проверить не только значение но и их очерёдность в списке. Например: если при сохранении множественного поля изменили значения местами, то при проверке модуль посчитает поле как изменённое. По умолчанию: проверяется поле на наличие изменений без учета очерёдности значений. '],
+        [
+            'MSMAIN.LOGS.OPTION_STRICT_CHECK_MULTIPLY_FIELDS',
+            'Строгая проверка множественного поля',
+            'N',
+            ['checkbox', 'N']
+        ],
+        [
+            'MSMAIN.LOGS.OPTION_SAVE_LOG_HISTORY_EDIT',
+            'Поля для строгой проверки множества',
+            '',
+            [
+                'multiselectbox',
+                $dealFieldsOption
+            ]
+        ],
+
         //TODO сделать разрешения для редактирования определенным группам пользователя.
     ],
     'CURRENCIES'     => [

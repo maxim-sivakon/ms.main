@@ -2,12 +2,18 @@
 
 namespace MS\Main\Handler;
 
+use Bitrix\Main\LoaderException;
 use MS\Main\Assets\Savelog\Config;
 use MS\Main\Assets\Savelog\WorkLog;
 
 class logHandler
 {
 
+    /**
+     * @param $arFields
+     * @return mixed
+     * @throws LoaderException
+     */
     public static function SaveLog(&$arFields)
     {
         $result = false;
