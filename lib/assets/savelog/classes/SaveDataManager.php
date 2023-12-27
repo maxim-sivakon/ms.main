@@ -39,18 +39,21 @@ class SaveDataManager implements SaveLogInterface
                 'DATE_CREATE_LOG'          => new DateTime(),
                 'ID_DEAL'                  => $arFieldsDeal[ 'ID' ],
                 'TYPE_DEVICE'              => $typeDevice->getUserAgent(),
-                'LIST_MODIFI_FIELDS'       => serialize($resultCheckEvent['FIELDS']),
+                'LIST_MODIFI_FIELDS'       => base64_encode(serialize($resultCheckEvent['FIELDS'])),
                 'COUNT_MODIFI_FIELDS'      => count($listCodeFields),
-                'LIST_MODIFI_FIELDS_VALUE' => serialize(HelperFields::checkingFields($oldFieldsDeal, $resultCheckEvent['FIELDS'])),
+                'LIST_MODIFI_FIELDS_VALUE' => base64_encode(serialize(HelperFields::checkingFields($oldFieldsDeal, $resultCheckEvent['FIELDS']))),
                 'USER_IP'                  => $typeDevice->getHttpHeaders()["HTTP_X_FORWARDED_FOR"],
                 'USER_URL'                 => $APPLICATION->GetCurPage()
             ];
 
             $id = 0;
             $result = LogsTable::add($result);
+
             if ($result->isSuccess()) {
                 $id = $result->getId();
             }
+
+
 
 
         }

@@ -17,6 +17,7 @@ if (!Loader::includeModule('crm')) {
 
 $asset = Asset::getInstance();
 $asset->addJs('/bitrix/js/crm/interface_grid.js');
+$GLOBALS['APPLICATION']->SetAdditionalCSS("/bitrix/js/intranet/intranet-common.css");
 
 $gridManagerId = $arResult[ 'GRID_ID' ].'_MANAGER';
 
@@ -43,34 +44,44 @@ foreach ($arResult[ 'LOGS' ] as $log) {
         'id'      => $log[ 'ID' ],
         'actions' => [
             [
-                'TITLE'   => Loc::getMessage('CRMSTORES_ACTION_VIEW_TITLE'),
-                'TEXT'    => Loc::getMessage('CRMSTORES_ACTION_VIEW_TEXT'),
+                'TITLE'   => Loc::getMessage('MSMAIN_ACTION_VIEW_TITLE'),
+                'TEXT'    => Loc::getMessage('MSMAIN_ACTION_VIEW_TEXT'),
                 'ONCLICK' => 'BX.Crm.Page.open('.Json::encode($viewUrl).')',
                 'DEFAULT' => true
             ],
-            [
-                'TITLE'   => Loc::getMessage('CRMSTORES_ACTION_EDIT_TITLE'),
-                'TEXT'    => Loc::getMessage('CRMSTORES_ACTION_EDIT_TEXT'),
-                'ONCLICK' => 'BX.Crm.Page.open('.Json::encode($editUrl).')',
-            ],
-            [
-                'TITLE'   => Loc::getMessage('CRMSTORES_ACTION_DELETE_TITLE'),
-                'TEXT'    => Loc::getMessage('CRMSTORES_ACTION_DELETE_TEXT'),
-                'ONCLICK' => 'BX.CrmUIGridExtension.processMenuCommand('.Json::encode($gridManagerId).', BX.CrmUIGridMenuCommand.remove, { pathToRemove: '.Json::encode($deleteUrl).' })',
-            ]
+//            [
+//                'TITLE'   => Loc::getMessage('MSMAIN_ACTION_EDIT_TITLE'),
+//                'TEXT'    => Loc::getMessage('MSMAIN_ACTION_EDIT_TEXT'),
+//                'ONCLICK' => 'BX.Crm.Page.open('.Json::encode($editUrl).')',
+//            ],
+//            [
+//                'TITLE'   => Loc::getMessage('MSMAIN_ACTION_DELETE_TITLE'),
+//                'TEXT'    => Loc::getMessage('MSMAIN_ACTION_DELETE_TEXT'),
+//                'ONCLICK' => 'BX.CrmUIGridExtension.processMenuCommand('.Json::encode($gridManagerId).', BX.CrmUIGridMenuCommand.remove, { pathToRemove: '.Json::encode($deleteUrl).' })',
+//            ]
         ],
         'data'    => $log,
         'columns' => [
             'ID'          => $log[ 'ID' ],
             'NAME'        => '<a href="'.$viewUrl.'" target="_self">'.$log[ 'NAME' ].'</a>',
-            'ASSIGNED_BY' => empty($log[ 'ASSIGNED_BY' ]) ? '' : CCrmViewHelper::PrepareUserBaloonHtml(
+            'TYPE_EVENT' => '<span class="sonet-ui-grid-request-cont"><span class="ui-label sonet-ui-grid-role --role-blue"><span class="ui-label-inner">'.$log[ 'TYPE_EVENT' ].'</span></span></span>',
+            'DATE_CREATE_LOG',
+            'USER_CREATE_LOG' => empty($log[ 'USER_CREATE_LOG' ]) ? '' : CCrmViewHelper::PrepareUserBaloonHtml(
                 [
                     'PREFIX'           => "LOG_{$log['ID']}_RESPONSIBLE",
-                    'USER_ID'          => $log[ 'ASSIGNED_BY_ID' ],
-                    'USER_NAME'        => CUser::FormatName(CSite::GetNameFormat(), $log[ 'ASSIGNED_BY' ]),
+                    'USER_ID'          => $log[ 'USER_CREATE_LOG' ],
+                    'USER_NAME'        => CUser::FormatName(CSite::GetNameFormat(), MS\Main\Helpers::getUser($log[ 'USER_CREATE_LOG' ])),
                     'USER_PROFILE_URL' => Option::get('intranet', 'path_user', '', SITE_ID).'/'
                 ]
-            )
+            ),
+            'LOCAL_TIME_USER',
+            'ID_DEAL'=> '<a href="/crm/deal/details/'. $log[ 'ID_DEAL' ] . '/" target="_blank">'.$log[ 'ID_DEAL' ].'</a>',
+            'TYPE_DEVICE',
+            'LIST_MODIFI_FIELDS',
+            'COUNT_MODIFI_FIELDS' => '<span class="main-grid-cell-counter main-grid-cell-counter-left-aligned"><span class="ui-counter ui-counter-gray sonet-ui-grid-counter"><span class="ui-counter-inner">'. $log[ 'COUNT_MODIFI_FIELDS' ] . '</span></span></span>',
+            'LIST_MODIFI_FIELDS_VALUE' => MS\Main\Helpers::formatFieldGrid($log[ 'LIST_MODIFI_FIELDS_VALUE' ]),
+            'USER_IP',
+            'USER_URL',
         ]
     ];
 }
@@ -100,7 +111,7 @@ $APPLICATION->IncludeComponent(
             'GROUPS' => [
                 [
                     'ITEMS' => [
-                        $snippet->getRemoveButton(),
+                        //$snippet->getRemoveButton(),
                         $snippet->getForAllCheckbox(),
                     ]
                 ]
@@ -114,9 +125,9 @@ $APPLICATION->IncludeComponent(
                 'serviceUrl'    => $arResult[ 'SERVICE_URL' ],
             ],
             'MESSAGES' => [
-                'deletionDialogTitle'       => Loc::getMessage('CRMSTORES_DELETE_DIALOG_TITLE'),
-                'deletionDialogMessage'     => Loc::getMessage('CRMSTORES_DELETE_DIALOG_MESSAGE'),
-                'deletionDialogButtonTitle' => Loc::getMessage('CRMSTORES_DELETE_DIALOG_BUTTON'),
+                'deletionDialogTitle'       => Loc::getMessage('MSMAIN_DELETE_DIALOG_TITLE'),
+                'deletionDialogMessage'     => Loc::getMessage('MSMAIN_DELETE_DIALOG_MESSAGE'),
+                'deletionDialogButtonTitle' => Loc::getMessage('MSMAIN_DELETE_DIALOG_BUTTON'),
             ]
         ],
     ],

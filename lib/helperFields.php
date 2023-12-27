@@ -144,7 +144,8 @@ class HelperFields
 
 
     /**
-     * Проверка множественных полей
+     * Checking multiple fields.
+     * All values are processed by the htmlspecialchars function - stored in the same form in the database.
      *
      * @param  array  $oldFields
      * @param  array  $сhangedFields
@@ -156,6 +157,7 @@ class HelperFields
         $strictMultipleFields = [
             'CONTACT_IDS', 'MODIFY_BY_ID'
         ];
+        $filedsName = self::getDealFieldsOption();
         foreach ($сhangedFields as $keyField => $valueFiled) {
             if (is_array($valueFiled)) {
                 $arDiffOld = array_diff_assoc($oldFields[ $keyField ], $сhangedFields[ $keyField ]);
@@ -168,22 +170,37 @@ class HelperFields
                 for ($key = 0; $key < $maxCountElement; $key++) {
                     if (!array_key_exists($key, $arDiffOld) && array_key_exists($key, $arDiffNew)) {
                         $countAddEdied++;
-                        $result[ $keyField ][ 'RESULT_CHECK' ][] = array_merge(['новое значение'],
-                            [$arDiffNew[ $key ]]);
+                        $result[ $keyField ][ 'NAME' ] = htmlspecialchars($filedsName[ $keyField ], ENT_QUOTES,
+                            'UTF-8');
+                        $result[ $keyField ][ 'RESULT_CHECK' ][] = array_merge(
+                            [htmlspecialchars('новое значение', ENT_QUOTES, 'UTF-8')],
+                            [htmlspecialchars($arDiffNew[ $key ], ENT_QUOTES, 'UTF-8')]
+                        );
                     } elseif (!array_key_exists($key, $arDiffNew) && array_key_exists($key, $arDiffOld)) {
                         $countDeletedFiled++;
-                        $result[ $keyField ][ 'RESULT_CHECK' ][] = array_merge([$arDiffOld[ $key ]],
-                            ['значение удалено']);
+                        $result[ $keyField ][ 'NAME' ] = htmlspecialchars($filedsName[ $keyField ], ENT_QUOTES,
+                            'UTF-8');
+                        $result[ $keyField ][ 'RESULT_CHECK' ][] = array_merge(
+                            [htmlspecialchars($arDiffOld[ $key ], ENT_QUOTES, 'UTF-8')],
+                            [htmlspecialchars('значение удалено', ENT_QUOTES, 'UTF-8')]
+                        );
                     } elseif (!$arDiffNew[ $key ] && !$arDiffOld[ $key ] && in_array($keyField,
                             $strictMultipleFields)) {
                         $countEdiedFiled++;
                         $result[ $keyField ][ 'TYPE_CHECK' ] = 'STRICT';
-                        $result[ $keyField ][ 'RESULT_CHECK' ][] = array_merge([$oldFields[ $keyField ][ $key ]],
-                            [$сhangedFields[ $keyField ][ $key ]]);
+                        $result[ $keyField ][ 'NAME' ] = htmlspecialchars($filedsName[ $keyField ], ENT_QUOTES,
+                            'UTF-8');
+                        $result[ $keyField ][ 'RESULT_CHECK' ][] = array_merge(
+                            [htmlspecialchars($oldFields[ $keyField ][ $key ], ENT_QUOTES, 'UTF-8')],
+                            [htmlspecialchars($сhangedFields[ $keyField ][ $key ])]
+                        );
                     } elseif ($arDiffOld[ $key ] && $arDiffNew[ $key ]) {
                         $countEdiedFiled++;
-                        $result[ $keyField ][ 'RESULT_CHECK' ][] = array_merge([$arDiffOld[ $key ]],
-                            [$arDiffNew[ $key ]]);
+                        $result[ $keyField ][ 'NAME' ] = $filedsName[ $keyField ];
+                        $result[ $keyField ][ 'RESULT_CHECK' ][] = array_merge(
+                            [htmlspecialchars($arDiffOld[ $key ], ENT_QUOTES, 'UTF-8')],
+                            [htmlspecialchars($arDiffNew[ $key ], ENT_QUOTES, 'UTF-8')]
+                        );
                     }
                 }
 
@@ -202,25 +219,41 @@ class HelperFields
     }
 
     /**
+     *  all values are processed by the htmlspecialchars function - stored in the same form in the database
+     *
      * @param  array  $oldFields
      * @param  array  $сhangedFields
      * @return array
+     * 174
      */
     public static function checkingFields(array $oldFields, array $сhangedFields): array
     {
         $result = [];
+        $filedsName = self::getDealFieldsOption();
 
         foreach ($сhangedFields as $keyField => $valueFiled) {
             if (!is_array($valueFiled)) {
                 if ($oldFields[ $keyField ] != $сhangedFields[ $keyField ] && !empty($oldFields[ $keyField ]) && !empty($сhangedFields[ $keyField ])) {
-                    $result[ $keyField ][ 'RESULT_CHECK' ] = [$oldFields[ $keyField ], $сhangedFields[ $keyField ]];
+                    $result[ $keyField ][ 'NAME' ] = htmlspecialchars($filedsName[ $keyField ], ENT_QUOTES, 'UTF-8');
+                    $result[ $keyField ][ 'RESULT_CHECK' ][] = [
+                        htmlspecialchars(self::checkLimitValueField($oldFields[ $keyField ]), ENT_QUOTES, 'UTF-8'),
+                        htmlspecialchars(self::checkLimitValueField($сhangedFields[ $keyField ]), ENT_QUOTES, 'UTF-8')
+                    ];
                 } elseif (empty($сhangedFields[ $keyField ])) {
-                    $result[ $keyField ][ 'RESULT_CHECK' ] = [$oldFields[ $keyField ], 'значение удалено'];
+                    $result[ $keyField ][ 'NAME' ] = htmlspecialchars($filedsName[ $keyField ], ENT_QUOTES, 'UTF-8');
+                    $result[ $keyField ][ 'RESULT_CHECK' ][] = [
+                        htmlspecialchars(self::checkLimitValueField($oldFields[ $keyField ]), ENT_QUOTES, 'UTF-8'),
+                        htmlspecialchars('значение удалено', ENT_QUOTES, 'UTF-8')
+                    ];
                 } elseif ($сhangedFields[ $keyField ] && $oldFields[ $keyField ] == '') {
-                    $result[ $keyField ][ 'RESULT_CHECK' ] = ['новое значение', $oldFields[ $keyField ]];
+                    $result[ $keyField ][ 'NAME' ] = htmlspecialchars($filedsName[ $keyField ], ENT_QUOTES, 'UTF-8');
+                    $result[ $keyField ][ 'RESULT_CHECK' ][] = [
+                        htmlspecialchars('новое значение', ENT_QUOTES, 'UTF-8'),
+                        htmlspecialchars(self::checkLimitValueField($oldFields[ $keyField ]), ENT_QUOTES, 'UTF-8')
+                    ];
                 }
             } else {
-                $result[] = self::checkingMultipleFields($oldFields, $сhangedFields);
+                $result += self::checkingMultipleFields($oldFields, $сhangedFields);
             }
         }
         return $result;
@@ -236,6 +269,28 @@ class HelperFields
 
         foreach ($сhangedFields as $keyField => $valueFiled) {
             $result[] = $keyField;
+        }
+
+        return $result;
+    }
+
+    /**
+     * @param  string|null  $valueField
+     * @return string
+     */
+    public static function checkLimitValueField(?string $valueField): string
+    {
+        switch ($valueField) {
+            case '1':
+            case 'Y':
+                $result = 'нет';
+                break;
+            case '0':
+            case 'N':
+                $result = 'да';
+                break;
+            default:
+                $result = $valueField ?? 'пустое значение';
         }
 
         return $result;

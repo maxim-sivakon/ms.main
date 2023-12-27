@@ -74,4 +74,27 @@ class Helpers
         return $result;
     }
 
+    /**
+     * @param  array|string  $listField
+     * @return mixed
+     */
+    public static function formatFieldGrid(array|string $listField): mixed
+    {
+        $dataListField = unserialize(base64_decode($listField));
+        $result = '<table><tbody>';
+
+        foreach ($dataListField as $keyField => $valueFiled) {
+            $result .= '<tr><th colspan="2"><b>' . $valueFiled['NAME'] . '</b></th></tr>';
+            foreach ($valueFiled["RESULT_CHECK"] as $key => $value){
+                $result .= '<tr><td>' . $value[0] . '</td><td>→</td><td>' . $value[1] . '</td></tr>';
+            }
+
+        }
+        $result .= '</tbody></table>';
+
+        return $result;
+    }
+
 }
+
+
