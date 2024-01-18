@@ -4,9 +4,8 @@ IncludeModuleLangFile(__FILE__);
 CModule::AddAutoloadClasses(
     'ms.main',
     [
+        "MS\Main\NFDS"               => "lib/NFDS.php",
         "MS\Main\Helpers"               => "lib/helpers.php",
-        "MS\Main\HelperFields"          => "lib/helperFields.php",
-        "MS\Main\CTypeEventModify"          => "lib/CTypeEventModify.php",
         "MS\\Main\\Handler\\LogHandler" => "lib/handler/logHandler.php",
 
         "MS\Main\Assets\Savelog\Config"                     => "lib/assets/savelog/workLog.php",

@@ -12,8 +12,9 @@ Loader::includeModule($module_id);
 use Bitrix\Main\Config\Configuration;
 use Bitrix\Main\Localization\Loc;
 
+//use MS\Main\CTypeEventModify;
 use MS\Main\Helpers;
-use MS\Main\HelperFields;
+//use MS\Main\HelperFields;
 
 global $APPLICATION, $USER;
 
@@ -22,10 +23,43 @@ if (!$USER->IsAdmin()) {
 }
 
 $formAction = $APPLICATION->GetCurPage().'?mid='.htmlspecialcharsbx($mid).'&lang='.LANGUAGE_ID;
-$dealFieldsOption = HelperFields::getDealFieldsOption();
+//$dealFieldsOption = HelperFields::getDealFieldsOption();
 
-$log[ 'LIST_MODIFI_FIELDS' ] = 'YTo0OntzOjE3OiJVRl9DUk1fMTYwMDMxMDAxNSI7YTozOntzOjEwOiJDT1VOVF9FRElUIjtpOjA7czoxMjoiQ09VTlRfREVMRVRFIjtpOjA7czo5OiJDT1VOVF9BREQiO2k6MDt9czoyMDoiVUZfQ1JNXzE2NDAyMzQ2MDQ3OTEiO2E6Mjp7czo0OiJOQU1FIjtzOjMzOiLQlNC+0LrRg9C80LXQvdGC0Ysg0YHQvtCx0YDQsNC90YsiO3M6MTI6IlJFU1VMVF9DSEVDSyI7YToxOntpOjA7YToyOntpOjA7czoxOiIxIjtpOjE7czozMToi0LfQvdCw0YfQtdC90LjQtSDRg9C00LDQu9C10L3QviI7fX19czoxNzoiVUZfQ1JNXzE2NTc1MDY4MzciO2E6Mjp7czo0OiJOQU1FIjtzOjYxOiLQktC40LQg0JLQrdCUINC00LvRjyDQntCe0J4g0K3QutGB0L/QvtGA0YLQtdGAICDQntCe0J4g0JLQrdCUIjtzOjEyOiJSRVNVTFRfQ0hFQ0siO2E6MTp7aTowO2E6Mjp7aTowO3M6NDoiMjczNyI7aToxO3M6NDoiMjc2MyI7fX19czoxMjoifkRBVEVfTU9ESUZZIjthOjI6e3M6NDoiTkFNRSI7czowOiIiO3M6MTI6IlJFU1VMVF9DSEVDSyI7YToxOntpOjA7YToyOntpOjA7czoyNzoi0L3QvtCy0L7QtSDQt9C90LDRh9C10L3QuNC1IjtpOjE7czowOiIiO319fX0=';
-$res = MS\Main\Helpers::formatFieldGrid($log[ 'LIST_MODIFI_FIELDS' ]);
+
+$arFieldsDeal = [
+        'ID' => 50862,
+    "IS_MANUAL_OPPORTUNITY" => "Y",
+    "BEGINDATE"             => "27.10.2023",
+    "ASSIGNED_BY_ID"        => "351",
+    "UF_CRM_1626853571"     => "23.11.2023",
+    "UF_CRM_1460029339"     => "2455",
+    "UF_CRM_1478514709"     => "1630",
+    "UF_CRM_1548653136"     => "2582",
+    "UF_CRM_1568711077"     => [
+        0 => "1175",
+    ],
+    "UF_CRM_1584445181"     => "3025",
+    "UF_CRM_1600310015"     => [
+        0 => "1. 7326909807",
+        1 => "2-3. 8536901000",
+        2 => "4-3. 8536901000",
+        3 => "6-8. 8536901000"
+    ],
+   "UF_CRM_1601294280" =>"2866",
+    "UF_CRM_1629181183"=> "4141412",
+    "UF_CRM_1629873976"=> "RR192992506RURT",
+    "UF_CRM_1637686113256" => "29.12.2023",
+    "UF_CRM_1640234604791" => 1,
+    "UF_CRM_1649312142714" => [
+        0 =>"2821",
+        1 =>"26911",
+        2 =>"2689",
+        3 =>"2692",
+    ],
+    "~DATE_MODIFY" => "now()",
+    "MODIFY_BY_ID" => 409,
+
+];
 
 
 

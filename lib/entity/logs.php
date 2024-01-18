@@ -15,24 +15,9 @@ use Bitrix\Main\UserTable;
 
 class LogsTable extends DataManager
 {
-    protected static $instance = null;
     public static function getTableName()
     {
         return 'ms_main_logs';
-    }
-
-    public static function getInstance()
-    {
-        if(self::$instance === null)
-        {
-            self::$instance = new LogsTable();
-        }
-        return self::$instance;
-    }
-
-    public static function getFilePath()
-    {
-        return __FILE__;
     }
 
     public static function getMap()
@@ -68,10 +53,6 @@ class LogsTable extends DataManager
                 ['=this.ID_DEAL' => 'ref.ID']
             )
         ];
-    }
-
-    public static function add(array $data){
-        return parent::add($data);
     }
 
 }

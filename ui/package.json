@@ -1,0 +1,13 @@
+{
+  "scripts": {
+    "build": "npx tailwindcss -i templates/init.css -o ../install/css/style.css",
+    "watch": "npx tailwindcss -i templates/init.css -o ../install/css/style.css --watch",
+    "minify": "npx tailwindcss -i templates/init.css -o ../install/css/style.css --minify"
+  },
+  "devDependencies": {
+    "tailwindcss": "^3.4.1"
+  },
+  "dependencies": {
+    "@tailwindcss/line-clamp": "^0.4.4"
+  }
+}
