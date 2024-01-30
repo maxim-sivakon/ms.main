@@ -3,17 +3,32 @@
 namespace MS\Main;
 
 use \Bitrix\Main;
-use Bitrix\Main\LoaderException;
+use \Bitrix\Main\LoaderException;
 use \MS\Main\Helpers;
 use \Bitrix\Main\Loader;
 use \Bitrix\Main\Type\DateTime;
 use \Bitrix\Crm\Category\DealCategory;
 
-final class NFDS
+interface I_NFDS
 {
+    public function codeCrashesDuringVerification(string $exception): array;
+    public function garbageCleaning();
+    public function getDealFields(): array;
+    public function getDeal(int $dealID = 0, array $arFiledsFilter = []): array;
+    public function controlField(): array;
+    public function checkingStageOrCategoryDeal(string $new, string $old, string $type): array;
+    public function checkingSingle(string $new, null|string $old, string $key, string $type): array;
+    public function checkingMultipleEnumeration(array $new, array $old, string $key): array;
+    public function checkingMultipleValue(array $new, array $old, string $key, string $type): array;
+    public function bakingData(array $arResult): array;
+    public function cook(): ?array;
+}
+
+final class NFDS implements I_NFDS
+{
+    public const dealID = 0;
     private array $beforeChangingFields;
     private array $currentModifiedFields;
-    private array $finResult;
     private array $listFields;
     private const MAP_FILED_NAME         = [
         'ID'                    => 'Идентификатор элемента',
@@ -82,87 +97,74 @@ final class NFDS
     ];
 
     /**
-     * @param $currentModifiedFields
+     * @param  array  $currentModifiedFields
      * @throws LoaderException
      */
-    public function __construct($currentModifiedFields)
+    public function __construct(array $currentModifiedFields)
     {
-        if (array_key_exists('ID', $currentModifiedFields)) {
-            if (\Bitrix\Main\Loader::IncludeModule('crm')) {
-                $this->listFields = self::getDealFields();
-                $this->currentModifiedFields = self::cleaner(self::checkLimitKeyField($currentModifiedFields));
-                $this->beforeChangingFields = self::getDeal((int) $this->currentModifiedFields[ 'ID' ],
-                    $this->currentModifiedFields);
-
-
-                ?><pre><?  var_dump(count($this->listFields)); ?></pre><?php
-                ?><pre><?  var_dump(count($currentModifiedFields)); ?></pre><?php
-                ?><pre><?  var_dump(count($this->currentModifiedFields)); ?></pre><?php
-
-
-                $preBuild = $this->controlField();
-                ?><pre><?  var_dump($preBuild); ?></pre><?php
-                die();
-                $this->finResult = $this->bakingData($preBuild);
-
+        $this->currentModifiedFields = $currentModifiedFields;
+        try {
+            if (array_key_exists('ID', $this->currentModifiedFields) && $this->currentModifiedFields[ 'ID' ] > 0) {
+                $this->dealID = $this->currentModifiedFields[ 'ID' ];
+                if (Loader::IncludeModule('crm')) {
+                    $this->listFields = self::getDealFields();
+                    self::garbageCleaning();
+                    $this->beforeChangingFields = self::getDeal((int) $this->dealID, $this->currentModifiedFields);
+                    $preBuild = $this->controlField();
+                    $this->finResult = $this->bakingData($preBuild);
+                } else {
+                    throw new \Exception('No include module crm.');
+                }
             } else {
-                throw new \Exception('No include module crm.');
+                throw new \Exception('No ID deal or invalid ID!');
             }
-        } else {
-            throw new \Exception('No ID deal.');
+        } catch (\Exception $e) {
+            return $this->codeCrashesDuringVerification($e);
         }
     }
 
     /**
-     * @param  array|null  $arFields
+     *  Метод позволяет организовать чистку ненужных входящих данных.
+     *
      * @return array
      */
-    private function checkLimitKeyField(?array &$arFields): array
+    public function garbageCleaning()
     {
-        $result = [];
-        $checkChar = ['~'];
+        $arResultClean = $this->currentModifiedFields;
 
-        foreach ($checkChar as $valueChar) {
-            foreach ($arFields as $keyField => $valueField) {
-                $result[ mb_substr($keyField, 0, 1, "UTF-8") == $valueChar ? substr($keyField,
-                    1) : $keyField ] = $valueField;
+        $stepCleaning = ['1', '2'];
+
+        foreach ($stepCleaning as $step) {
+            switch ($step) {
+                case '1':
+                    $checkChar = ['~'];
+                    foreach ($checkChar as $valueChar) {
+                        foreach ($arResultClean as $keyField => $valueField) {
+                            $arResultClean[ mb_substr($keyField, 0, 1, "UTF-8") == $valueChar ? substr($keyField,
+                                1) : $keyField ] = $valueField;
+                        }
+                    }
+                    break;
+                case '2':
+                    foreach ($arResultClean as $key => $value) {
+                        if (in_array($key, $this->listFields) || $value == 'NULL' || is_null($value) || in_array($key,
+                                self::IGNORING_FIELDS)
+                            || (is_array($value) && empty($value))) {
+                            unset($arResultClean[ $key ]);
+                        }
+                    }
+                    break;
             }
         }
 
-        return $result;
+        $this->currentModifiedField = $arResultClean;
+
     }
 
     /**
-     * @param  int  $dealID
-     * @param  array  $arFiledsFilter
-     * @return array|null
+     * @return array
      */
-    private static function getDeal(int $dealID = 0, array $arFiledsFilter = []): ?array
-    {
-        $arResult = [];
-
-        $entityResult = \CCrmDeal::GetListEx(
-            ['SOURCE_ID' => 'DESC'],
-            [
-                'ID'                => $dealID,
-                'CHECK_PERMISSIONS' => 'N'
-            ],
-            false,
-            false,
-            array_keys($arFiledsFilter)
-        );
-
-        while ($entity = $entityResult->fetch()) {
-            $arResult = $entity;
-        }
-
-        return $arResult;
-    }
-
-    /**
-     * @return array|null
-     */
-    private static function getDealFields(): ?array
+    public function getDealFields(): array
     {
         global $USER_FIELD_MANAGER;
         $arDeal = [];
@@ -195,19 +197,45 @@ final class NFDS
         return $arDeal;
     }
 
-    private function cleaner(array $arFields):?array
+    /**
+     * @param  int  $dealID
+     * @param  array  $arFiledsFilter
+     * @return array
+     */
+    public function getDeal(int $dealID = 0, array $arFiledsFilter = []): array
     {
-        $arFieldsTmp = $arFields;
-        foreach ($arFieldsTmp as $key => $value){
-            if(in_array($key, $this->listFields) || $value == 'NULL' || is_null($value) || in_array($key, self::IGNORING_FIELDS)
-                || (is_array($value) && empty($value))){
-                unset($arFieldsTmp[$key]);
-            }
+        $arResult = [];
+
+        $entityResult = \CCrmDeal::GetListEx(
+            ['SOURCE_ID' => 'DESC'],
+            [
+                'ID'                => $dealID,
+                'CHECK_PERMISSIONS' => 'N'
+            ],
+            false,
+            false,
+            array_keys($arFiledsFilter)
+        );
+
+        while ($entity = $entityResult->fetch()) {
+            $arResult = $entity;
         }
-        return $arFieldsTmp;
+
+        return $arResult;
     }
 
+    /**
+     * Текущей метод обязан отработать если произошло аварийное остановка алгоритма проверки полей.
+     * Данный метод должен сделать минимальное сохранение-обработка данных для логирования.
+     *
+     * @return array
+     */
+    public function codeCrashesDuringVerification($error): array
+    {
+        $arResult = [];
 
+        return $arResult;
+    }
     /**
      *
      *  Предварительно перед тем как начать обработку измененного значения поля сделки, нужно получить список полей сделки и основывать проверку поля и
@@ -225,113 +253,113 @@ final class NFDS
      *
      * @return array
      */
-    private function controlField(): array
+    public function controlField(): array
     {
         $result = [];
 
         foreach ($this->currentModifiedFields as $keyField => $valueFiled) {
 
-                $currentModified = $this->currentModifiedFields[ $keyField ];
-                $beforeChanging = $this->beforeChangingFields[ $keyField ];
+            $currentModified = $this->currentModifiedFields[ $keyField ];
+            $beforeChanging = $this->beforeChangingFields[ $keyField ];
 
-                if (!$this->listFields[ $keyField ][ 'TYPE' ]) {
-                    $this->listFields[ $keyField ][ 'TYPE' ] = 'notype';
-                }
+            if (!$this->listFields[ $keyField ][ 'TYPE' ]) {
+                $this->listFields[ $keyField ][ 'TYPE' ] = 'notype';
+            }
 
-                if (gettype($currentModified) == 'array' && gettype($beforeChanging) == 'NULL') {
-                    $beforeChanging = [];
-                    settype($beforeChanging, "array");
-                } elseif (gettype($beforeChanging) == 'string') {
-                    settype($currentModified, 'string');
-                } elseif (gettype($beforeChanging) == 'array') {
-                    settype($currentModified, 'array');
-                }else{
-                    settype($currentModified, 'string');
+            if (gettype($currentModified) == 'array' && gettype($beforeChanging) == 'NULL') {
+                $beforeChanging = [];
+                settype($beforeChanging, "array");
+            } elseif (gettype($beforeChanging) == 'string') {
+                settype($currentModified, 'string');
+            } elseif (gettype($beforeChanging) == 'array') {
+                settype($currentModified, 'array');
+            }else{
+                settype($currentModified, 'string');
 
 
-                }
+            }
 
-                if (!is_null($currentModified) || $currentModified == 'NULL') {
+            if (!is_null($currentModified) || $currentModified == 'NULL') {
 
-                    if (!is_null($this->listFields[ $keyField ][ 'ATTRIBUTES' ])
-                        && in_array('MUL', $this->listFields[ $keyField ][ 'ATTRIBUTES' ])
-                        || gettype($currentModified) == 'array' && gettype($beforeChanging) == 'array') {
+                if (!is_null($this->listFields[ $keyField ][ 'ATTRIBUTES' ])
+                    && in_array('MUL', $this->listFields[ $keyField ][ 'ATTRIBUTES' ])
+                    || gettype($currentModified) == 'array' && gettype($beforeChanging) == 'array') {
 
-                        switch ($this->listFields[ $keyField ][ 'TYPE' ]) {
-                            case 'enumeration':
-                                $baseRes = self::checkingMultipleEnumeration($currentModified, $beforeChanging,
-                                    $keyField);
-                                if (!is_null($baseRes) && !empty($baseRes)) {
-                                    $result[ $keyField ][ 'NAME' ] = $this->listFields[ $keyField ][ 'NAME' ];
-                                    $result[ $keyField ][ 'CODE' ] = $keyField;
-                                    $result[ $keyField ][ 'TYPE' ] = $this->listFields[ $keyField ][ 'TYPE' ];
-                                    $result[ $keyField ][ 'ATTRIBUTES' ] = $this->listFields[ $keyField ][ 'ATTRIBUTES' ];
-                                    $result[ $keyField ][ 'RESULT_COMPARISON' ] = $baseRes;
-                                }
-                                break;
-                            case 'file':
-                            case 'datetime':
-                            case 'string':
-                            case 'date':
-                            default:
-                                var_dump($keyField);
-                                var_dump($this->listFields[ $keyField ][ 'TYPE' ]);
-                                $baseRes = self::checkingMultipleValue($currentModified, $beforeChanging, $keyField,
-                                    $this->listFields[ $keyField ][ 'TYPE' ]);
-                                if (!is_null($baseRes) && !empty($baseRes)) {
-                                    $result[ $keyField ][ 'NAME' ] = $this->listFields[ $keyField ][ 'NAME' ];
-                                    $result[ $keyField ][ 'CODE' ] = $keyField;
-                                    $result[ $keyField ][ 'TYPE' ] = $this->listFields[ $keyField ][ 'TYPE' ];
-                                    $result[ $keyField ][ 'ATTRIBUTES' ] = $this->listFields[ $keyField ][ 'ATTRIBUTES' ];
-                                    $result[ $keyField ][ 'RESULT_COMPARISON' ] = $baseRes;
-                                }
-                                break;
+                    switch ($this->listFields[ $keyField ][ 'TYPE' ]) {
+                        case 'enumeration':
+                            $baseRes = self::checkingMultipleEnumeration($currentModified, $beforeChanging,
+                                $keyField);
+                            if (!is_null($baseRes) && !empty($baseRes)) {
+                                $result[ $keyField ][ 'NAME' ] = $this->listFields[ $keyField ][ 'NAME' ];
+                                $result[ $keyField ][ 'CODE' ] = $keyField;
+                                $result[ $keyField ][ 'TYPE' ] = $this->listFields[ $keyField ][ 'TYPE' ];
+                                $result[ $keyField ][ 'ATTRIBUTES' ] = $this->listFields[ $keyField ][ 'ATTRIBUTES' ];
+                                $result[ $keyField ][ 'RESULT_COMPARISON' ] = $baseRes;
+                            }
+                            break;
+                        case 'file':
+                        case 'datetime':
+                        case 'string':
+                        case 'date':
+                        default:
+                            var_dump($keyField);
+                            var_dump($this->listFields[ $keyField ][ 'TYPE' ]);
+                            $baseRes = self::checkingMultipleValue($currentModified, $beforeChanging, $keyField,
+                                $this->listFields[ $keyField ][ 'TYPE' ]);
+                            if (!is_null($baseRes) && !empty($baseRes)) {
+                                $result[ $keyField ][ 'NAME' ] = $this->listFields[ $keyField ][ 'NAME' ];
+                                $result[ $keyField ][ 'CODE' ] = $keyField;
+                                $result[ $keyField ][ 'TYPE' ] = $this->listFields[ $keyField ][ 'TYPE' ];
+                                $result[ $keyField ][ 'ATTRIBUTES' ] = $this->listFields[ $keyField ][ 'ATTRIBUTES' ];
+                                $result[ $keyField ][ 'RESULT_COMPARISON' ] = $baseRes;
+                            }
+                            break;
 
-                        }
-                    } else {
-                        switch ($this->listFields[ $keyField ][ 'TYPE' ]) {
-                            case 'crm_status':
-                            case 'crm_category':
-                                $baseRes = self::checkingStageOrCategoryDeal($currentModified, $beforeChanging,
-                                    $this->listFields[ $keyField ][ 'TYPE' ]);
-                                if (!is_null($baseRes) && !empty($baseRes)) {
-                                    $result[ $keyField ][ 'NAME' ] = $this->listFields[ $keyField ][ 'NAME' ];
-                                    $result[ $keyField ][ 'CODE' ] = $keyField;
-                                    $result[ $keyField ][ 'TYPE' ] = $this->listFields[ $keyField ][ 'TYPE' ];
-                                    $result[ $keyField ][ 'RESULT_COMPARISON' ] = $baseRes;
-                                }
-                                break;
-                            case 'crm_company':
-                            case 'crm_lead':
-                            case 'integer':
-                            case 'employee':
-                            case 'user':
-                            case 'crm_contact':
-                            case 'double':
-                            case 'location':
-                            case 'string':
-                            case 'crm_entity':
-                            case 'crm_currency':
-                            case 'char':
-                            case 'enumeration':
-                            case 'file':
-                            case 'datetime':
-                            case 'date':
-                            default:
-                                $baseRes = self::checkingSingle($currentModified, $beforeChanging, $keyField,
-                                    $this->listFields[ $keyField ][ 'TYPE' ]);
+                    }
+                } else {
+                    switch ($this->listFields[ $keyField ][ 'TYPE' ]) {
+                        case 'crm_status':
+                        case 'crm_category':
+                            $baseRes = self::checkingStageOrCategoryDeal($currentModified, $beforeChanging,
+                                $this->listFields[ $keyField ][ 'TYPE' ]);
+                            if (!is_null($baseRes) && !empty($baseRes)) {
+                                $result[ $keyField ][ 'NAME' ] = $this->listFields[ $keyField ][ 'NAME' ];
+                                $result[ $keyField ][ 'CODE' ] = $keyField;
+                                $result[ $keyField ][ 'TYPE' ] = $this->listFields[ $keyField ][ 'TYPE' ];
+                                $result[ $keyField ][ 'RESULT_COMPARISON' ] = $baseRes;
+                            }
+                            break;
+                        case 'crm_company':
+                        case 'crm_lead':
+                        case 'integer':
+                        case 'employee':
+                        case 'user':
+                        case 'crm_contact':
+                        case 'double':
+                        case 'location':
+                        case 'string':
+                        case 'crm_entity':
+                        case 'crm_currency':
+                        case 'char':
+                        case 'enumeration':
+                        case 'file':
+                        case 'datetime':
+                        case 'date':
+                        default:
+                            $baseRes = self::checkingSingle($currentModified, $beforeChanging, $keyField,
+                                $this->listFields[ $keyField ][ 'TYPE' ]);
 
-                                if (!is_null($baseRes) && !empty($baseRes)) {
-                                    $result[ $keyField ][ 'NAME' ] = $this->listFields[ $keyField ][ 'NAME' ];
-                                    $result[ $keyField ][ 'CODE' ] = $keyField;
-                                    $result[ $keyField ][ 'TYPE' ] = $this->listFields[ $keyField ][ 'TYPE' ];
-                                    $result[ $keyField ][ 'RESULT_COMPARISON' ] = $baseRes;
-                                }
-                                break;
-                        }
+                            if (!is_null($baseRes) && !empty($baseRes)) {
+                                $result[ $keyField ][ 'NAME' ] = $this->listFields[ $keyField ][ 'NAME' ];
+                                $result[ $keyField ][ 'CODE' ] = $keyField;
+                                $result[ $keyField ][ 'TYPE' ] = $this->listFields[ $keyField ][ 'TYPE' ];
+                                $result[ $keyField ][ 'RESULT_COMPARISON' ] = $baseRes;
+                            }
+                            break;
                     }
                 }
             }
+        }
 
 
         return $result;
@@ -343,7 +371,7 @@ final class NFDS
      * @param  string  $type
      * @return array|null
      */
-    private function checkingStageOrCategoryDeal(string $new, string $old, string $type): ?array
+    public function checkingStageOrCategoryDeal(string $new, string $old, string $type): array
     {
         $result = [];
         switch ($type) {
@@ -407,7 +435,7 @@ final class NFDS
      * @param  string  $type
      * @return array|null
      */
-    private function checkingSingle(string $new, null|string $old, string $key, string $type): ?array
+    public function checkingSingle(string $new, null|string $old, string $key, string $type): array
     {
         $result = [];
         $tmpVal = [$old, $new];
@@ -486,7 +514,7 @@ final class NFDS
      * @param  string  $key
      * @return array|null
      */
-    private function checkingMultipleEnumeration(array $new, array $old, string $key): ?array
+    public function checkingMultipleEnumeration(array $new, array $old, string $key): array
     {
         $result = [];
         $tmpVal = [$old, $new];
@@ -584,7 +612,7 @@ final class NFDS
      * @param  string  $type
      * @return array|null
      */
-    private function checkingMultipleValue(array $new, array $old, string $key, string $type): ?array
+    public function checkingMultipleValue(array $new, array $old, string $key, string $type): array
     {
         $result = [];
 
@@ -665,7 +693,7 @@ final class NFDS
      * @return array|string[]|null
      * @throws LoaderException
      */
-    private function bakingData(array $arResult): ?array
+    public function bakingData(array $arResult): array
     {
         $result = [];
         $result = [
@@ -686,7 +714,7 @@ final class NFDS
                 ];
             }
         }
-        $typeDevice = Helpers::detectUserDevice();
+        $typeDevice = \Helpers::detectUserDevice();
         $result += [
             'TYPE_DEVICE'         => $typeDevice->getUserAgent(),
             'USER_IP'             => $typeDevice->getHttpHeaders()[ "HTTP_X_FORWARDED_FOR" ],
@@ -701,24 +729,13 @@ final class NFDS
         return $result;
     }
 
+    /**
+     * @return string[]|null
+     */
     public function cook(): ?array
     {
         return $this->finResult;
     }
+    public function __destruct() {}
 
 }
-
-
-/*
- *
- * поля котоорые не отобразились и не дали ошибку
- * Вид ВЭД для ООО Экспортер ООО ВЭ - UF_CRM_1657506837
- *
- *
-Результат проверки поставщика - UF_CRM_1698783986
- *
- *
- *
- *
- *
- * */
