@@ -32,7 +32,7 @@ class DrawElementsGrid
         $result = '<table><tbody>';
 
         foreach ($dataListField as $keyField => $valueFiled) {
-
+            ?><pre><? var_dump($valueFiled); ?></pre><?php
             $result .= '<tr><th colspan="2"><b field-code="'.$valueFiled[ 'CODE' ].'">'.$valueFiled[ 'NAME' ].':</b></th></tr>';
 
             foreach ($codes as $code) {

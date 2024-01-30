@@ -3,22 +3,19 @@
 namespace MS\Main;
 
 use \Bitrix\Main;
+use Bitrix\Main\LoaderException;
 use \MS\Main\Helpers;
 use \Bitrix\Main\Loader;
 use \Bitrix\Main\Type\DateTime;
+use \Bitrix\Crm\Category\DealCategory;
 
-/*
- * Normalization of the data structures of the array fields while saving the transaction.
- * Preparing an array for storing and verifying data in the module.
- */
-
-class NFDS
+final class NFDS
 {
-    // TODO ПРЕДУСМОТРЕТЬ ВОЗМОЖНОСТЬ ОТПРАВКИ УВЕДОМЛЕНИЙ ПОЧТА/ТЕЛЕГРАМ БОТ И ПРОЧЕЕ. ТО ЕСТЬ РЕАЛИЗОВАТЬ КЛАСС, КОТОРЫЙ ПОЗВОЛИТ ДЕЛАТЬ ОТПРАВКУ ВСЕХ УВЕДОМЛЕНИЙ. СВЯЗАТЬ МЕЖДУ СОБОЙ ОБА КЛАССА СОГЛАСНО НАСТРОЙКАМ СИСТЕМЫ.
     private array $beforeChangingFields;
     private array $currentModifiedFields;
+    private array $finResult;
     private array $listFields;
-    private const MAP_FILED_NAME              = [
+    private const MAP_FILED_NAME         = [
         'ID'                    => 'Идентификатор элемента',
         'XML_ID'                => 'Внешний код элемента',
         'TITLE'                 => 'Название элемента',
@@ -58,6 +55,7 @@ class NFDS
         'IS_REPEATED_APPROACH'  => 'Сделка для повторного обращения',
         'PROBABILITY'           => 'Вероятность',
         'CONTACT_IDS'           => 'Контакты',
+        'CONTACT_BINDINGS'      => 'Основной контакт',
         'QUOTE_ID'              => 'Ком.пред',
         'CLOSED'                => 'Сделка закрыта',
         'COMMENTS'              => 'Комментарий',
@@ -78,24 +76,34 @@ class NFDS
         'UTM_CONTENT'           => 'Содержание кампании',
         'UTM_TERM'              => 'Условие поиска кампании'
     ];
-    private const STRICT_MULTIPLE_FIELDS      = ['UF_CRM_1600310015'];
-    private const IGNORING_FIELDS_LIMIT_CHECK = [
-        'ID', 'XML_ID', 'CREATED_BY', 'UPDATED_BY', 'MOVED_BY', 'CATEGORY_ID', 'STAGE_ID', 'PREVIOUS_STAGE_ID',
-        'COMPANY_ID', 'CONTACT_ID', 'CURRENCY_ID', 'ACCOUNT_CURRENCY_ID', 'MYCOMPANY_ID', 'SOURCE_ID',
-        'WEBFORM_ID', 'MOVED_BY_ID', 'TYPE_ID', 'CONTACT_IDS', 'QUOTE_ID', 'ASSIGNED_BY_ID', 'CREATED_BY_ID',
-        'MODIFY_BY_ID', 'LEAD_ID', 'LOCATION_ID', 'ORIGINATOR_ID', 'ORIGIN_ID', 'STAGE_SEMANTIC_ID'
+    private const STRICT_MULTIPLE_FIELDS = ['UF_CRM_1600310015'];
+    private const IGNORING_FIELDS        = [
+        'CONTACT_BINDINGS'
     ];
 
+    /**
+     * @param $currentModifiedFields
+     * @throws LoaderException
+     */
     public function __construct($currentModifiedFields)
     {
         if (array_key_exists('ID', $currentModifiedFields)) {
             if (\Bitrix\Main\Loader::IncludeModule('crm')) {
-                $this->currentModifiedFields = self::checkLimitKeyField($currentModifiedFields);
+                $this->listFields = self::getDealFields();
+                $this->currentModifiedFields = self::cleaner(self::checkLimitKeyField($currentModifiedFields));
                 $this->beforeChangingFields = self::getDeal((int) $this->currentModifiedFields[ 'ID' ],
                     $this->currentModifiedFields);
-                $this->listFields = self::getDealFields();
 
-                return $this->arrayProcessing();
+
+                ?><pre><?  var_dump(count($this->listFields)); ?></pre><?php
+                ?><pre><?  var_dump(count($currentModifiedFields)); ?></pre><?php
+                ?><pre><?  var_dump(count($this->currentModifiedFields)); ?></pre><?php
+
+
+                $preBuild = $this->controlField();
+                ?><pre><?  var_dump($preBuild); ?></pre><?php
+                die();
+                $this->finResult = $this->bakingData($preBuild);
 
             } else {
                 throw new \Exception('No include module crm.');
@@ -105,6 +113,10 @@ class NFDS
         }
     }
 
+    /**
+     * @param  array|null  $arFields
+     * @return array
+     */
     private function checkLimitKeyField(?array &$arFields): array
     {
         $result = [];
@@ -120,6 +132,11 @@ class NFDS
         return $result;
     }
 
+    /**
+     * @param  int  $dealID
+     * @param  array  $arFiledsFilter
+     * @return array|null
+     */
     private static function getDeal(int $dealID = 0, array $arFiledsFilter = []): ?array
     {
         $arResult = [];
@@ -142,6 +159,9 @@ class NFDS
         return $arResult;
     }
 
+    /**
+     * @return array|null
+     */
     private static function getDealFields(): ?array
     {
         global $USER_FIELD_MANAGER;
@@ -175,206 +195,494 @@ class NFDS
         return $arDeal;
     }
 
-    private function checkingInt(null|string|int $variable): ?int
+    private function cleaner(array $arFields):?array
     {
-        return is_numeric($variable) || is_int($variable) ? (int) $variable : null;
-    }
-
-    private function checkLimitValueField(?string $valueField, string $keyField): string
-    {
-        if (!array_search($keyField, self::IGNORING_FIELDS_LIMIT_CHECK)) {
-            switch ($valueField) {
-                case '1':
-                case 'Y':
-                    $valueField = 'да';
-                    break;
-                case '0':
-                case 'N':
-                    $valueField = 'нет';
-                    break;
-                case 'now()':
-                    $valueField = new DateTime();
-                default:
-                    $valueField = $valueField ?? 'пустое значение';
+        $arFieldsTmp = $arFields;
+        foreach ($arFieldsTmp as $key => $value){
+            if(in_array($key, $this->listFields) || $value == 'NULL' || is_null($value) || in_array($key, self::IGNORING_FIELDS)
+                || (is_array($value) && empty($value))){
+                unset($arFieldsTmp[$key]);
             }
         }
-        return $valueField;
+        return $arFieldsTmp;
     }
 
-    private function checkingFields(): ?array
+
+    /**
+     *
+     *  Предварительно перед тем как начать обработку измененного значения поля сделки, нужно получить список полей сделки и основывать проверку поля и
+     *  после проверять сохраненные значения основываясь на настройках поля.
+     *
+     *  Для проверки полей первоначально нужно обращать внимание на ключ поля ATTRIBUTES
+     *  в нем есть значение MUL что означает множественное поле. Каждое значение множественного поля хранится в типе данных строка,
+     *  но, само хранимое значение может быть и целым числом в виде строки.
+     *  Например: если обратить внимание на ключ TYPE -> enumeration хранит в себе в виде строки целое число ID значения с которого мы
+     *  можем получить текст выбранным пользователем в интерфейсе. Текущее поле может быть как множественным так не множественным.
+     *
+     *  Помимо ключа ATTRIBUTES есть ключ TYPE - в котором описывается тип поля,
+     *  то есть поле в виде файла, контакта, компании и так далее, каждый тип на мой взгляд лучше обрабатывать по отдельности.
+     *
+     *
+     * @return array
+     */
+    private function controlField(): array
     {
         $result = [];
 
         foreach ($this->currentModifiedFields as $keyField => $valueFiled) {
-            $beforeChangingFields = $this->beforeChangingFields[ $keyField ];
-            $currentModifiedFields = $this->currentModifiedFields[ $keyField ];
 
-            if (is_array($valueFiled)) {
-                $result += self::checkingMultipleFields($valueFiled);
-            } else {
-                $beforeChangingFields_isInt = self::checkingInt($beforeChangingFields);
-                $currentModifiedFields_isInt = self::checkingInt($currentModifiedFields);
+                $currentModified = $this->currentModifiedFields[ $keyField ];
+                $beforeChanging = $this->beforeChangingFields[ $keyField ];
 
-                if ((string) $currentModifiedFields !== (string) $beforeChangingFields) {
-                    $result[ $keyField ][ 'NAME' ] = $this->listFields[ $keyField ][ 'NAME' ];
-                    $result[ $keyField ][ 'RESULT_CHECK' ][] = [
-                        'OLD' => ['VALUE' => $beforeChangingFields, 'ID' => $beforeChangingFields_isInt],
-                        'NEW' => ['VALUE' => $currentModifiedFields, 'ID' => $currentModifiedFields_isInt]
-                    ];
-                } elseif (empty((string) $currentModifiedFields)) {
-                    $result[ $keyField ][ 'NAME' ] = $this->listFields[ $keyField ][ 'NAME' ];
-                    $result[ $keyField ][ 'RESULT_CHECK' ][] = [
-                        'OLD' => ['VALUE' => $beforeChangingFields, 'ID' => $beforeChangingFields_isInt],
-                        'NEW' => 'удалено значение'
-                    ];
-                } elseif ((string) $currentModifiedFields && (string) $beforeChangingFields == '') {
-                    $result[ $keyField ][ 'NAME' ] = $this->listFields[ $keyField ][ 'NAME' ];
-                    $result[ $keyField ][ 'RESULT_CHECK' ][] = [
-                        'OLD' => 'новое значение',
-                        'NEW' => ['VALUE' => $currentModifiedFields, 'ID' => $currentModifiedFields_isInt]
-                    ];
-                }
-            }
-        }
-
-        return $result;
-    }
-
-    private function checkingMultipleFields(): ?array
-    {
-        $result = [];
-
-        foreach ($this->currentModifiedFields as $keyField => $valueFiled) {
-            if (is_array($valueFiled)) {
-
-                $beforeChangingFields = $this->beforeChangingFields[ $keyField ];
-                $currentModifiedFields = $this->currentModifiedFields[ $keyField ];
-
-                $beforeDiffChangingField = array_diff_assoc($beforeChangingFields, $currentModifiedFields);
-                $currentDiffModifiedFields = array_diff_assoc($currentModifiedFields, $beforeChangingFields);
-
-                $maxCountElement = max(count($beforeChangingFields), count($currentModifiedFields));
-                $result[ $keyField ][ 'NAME' ] = $this->listFields[ $keyField ][ 'NAME' ];
-                $exRes = [];
-                for ($key = 0; $key < $maxCountElement; $key++) {
-                    if (in_array($keyField, self::STRICT_MULTIPLE_FIELDS)) {
-                        $exRes[ 'OLD' ][] = [
-                            'VALUE' => $beforeChangingFields[ $key ] ?? 'новое значение',
-                            'ID'    => self::checkingInt($beforeChangingFields[ $key ])
-                        ];
-                        $exRes[ 'NEW' ][] = [
-                            'VALUE' => $currentModifiedFields[ $key ] ?? 'удалено значение',
-                            'ID'    => self::checkingInt($currentModifiedFields[ $key ])
-                        ];
-                    } elseif (!array_key_exists($key, $beforeDiffChangingField) && array_key_exists($key,
-                            $currentDiffModifiedFields)) {
-                        $exRes[ 'OLD' ] = 'новое значение';
-                        $exRes[ 'NEW' ][] = [
-                            'VALUE' => $currentDiffModifiedFields[ $key ],
-                            'ID'    => self::checkingInt($currentDiffModifiedFields[ $key ])
-                        ];
-                    } elseif (!array_key_exists($key, $currentDiffModifiedFields) && array_key_exists($key,
-                            $beforeDiffChangingField)) {
-                        $exRes[ 'OLD' ][] = [
-                            'VALUE' => $beforeDiffChangingField[ $key ],
-                            'ID'    => self::checkingInt($beforeDiffChangingField[ $key ])
-                        ];
-                        $exRes[ 'NEW' ][] = 'удалено значение';
-                    } elseif ($beforeDiffChangingField[ $key ] && $currentDiffModifiedFields[ $key ]) {
-                        $exRes[ 'OLD' ][] = [
-                            'VALUE' => $beforeDiffChangingField[ $key ],
-                            'ID'    => self::checkingInt($beforeDiffChangingField[ $key ])
-                        ];
-                        $exRes[ 'NEW' ][] = [
-                            'VALUE' => $currentModifiedFields[ $key ],
-                            'ID'    => self::checkingInt($currentModifiedFields[ $key ])
-                        ];
-                    }
-                }
-                $result[ $keyField ][ 'RESULT_CHECK' ][] = $exRes;
-            }
-        }
-
-        return $result;
-    }
-
-    private function fillMultipleFieldID(array $preFinishDealFields): ?array
-    {
-        $finalResult = [];
-
-        foreach ($preFinishDealFields as $keyField => $valueFiled) {
-            $finalResult[ $keyField ][ 'NAME' ] = $valueFiled[ 'NAME' ];
-            $finalResult[ $keyField ][ 'CODE' ] = $keyField;
-            $keyEx = array_key_exists(0,
-                $valueFiled[ 'RESULT_CHECK' ]) ? $valueFiled[ 'RESULT_CHECK' ][ 0 ] : $valueFiled[ 'RESULT_CHECK' ];
-            foreach ($keyEx as $keyResult => $valueResult) {
-
-                $checker = false;
-                if (!is_string($valueResult) && array_key_exists(0, $valueResult)) {
-                    $checker = true;
+                if (!$this->listFields[ $keyField ][ 'TYPE' ]) {
+                    $this->listFields[ $keyField ][ 'TYPE' ] = 'notype';
                 }
 
-                if ($checker) {
-                    foreach ($valueResult as $valueResultKey => $valueResultItem) {
-                        if (!is_null($valueResultItem[ 'ID' ]) && array_key_exists('ITEMS',
-                                $this->listFields[ $keyField ])) {
-                            foreach ($this->listFields[ $keyField ][ 'ITEMS' ] as $keyListFields => $valueListFields) {
-                                if ((int) $valueListFields[ 'ID' ] === $valueResultItem[ 'ID' ]) {
-                                    $finalResult[ $keyField ][ 'RESULT_COMPARISON' ][ $keyResult ][] = [
-                                        'ID'    => $valueResultItem[ 'ID' ],
-                                        'VALUE' => self::checkLimitValueField($valueListFields[ 'VALUE' ],
-                                            $keyField)
-                                    ];
-                                    unset($preFinishDealFields[ $keyField ]);
+                if (gettype($currentModified) == 'array' && gettype($beforeChanging) == 'NULL') {
+                    $beforeChanging = [];
+                    settype($beforeChanging, "array");
+                } elseif (gettype($beforeChanging) == 'string') {
+                    settype($currentModified, 'string');
+                } elseif (gettype($beforeChanging) == 'array') {
+                    settype($currentModified, 'array');
+                }else{
+                    settype($currentModified, 'string');
+
+
+                }
+
+                if (!is_null($currentModified) || $currentModified == 'NULL') {
+
+                    if (!is_null($this->listFields[ $keyField ][ 'ATTRIBUTES' ])
+                        && in_array('MUL', $this->listFields[ $keyField ][ 'ATTRIBUTES' ])
+                        || gettype($currentModified) == 'array' && gettype($beforeChanging) == 'array') {
+
+                        switch ($this->listFields[ $keyField ][ 'TYPE' ]) {
+                            case 'enumeration':
+                                $baseRes = self::checkingMultipleEnumeration($currentModified, $beforeChanging,
+                                    $keyField);
+                                if (!is_null($baseRes) && !empty($baseRes)) {
+                                    $result[ $keyField ][ 'NAME' ] = $this->listFields[ $keyField ][ 'NAME' ];
+                                    $result[ $keyField ][ 'CODE' ] = $keyField;
+                                    $result[ $keyField ][ 'TYPE' ] = $this->listFields[ $keyField ][ 'TYPE' ];
+                                    $result[ $keyField ][ 'ATTRIBUTES' ] = $this->listFields[ $keyField ][ 'ATTRIBUTES' ];
+                                    $result[ $keyField ][ 'RESULT_COMPARISON' ] = $baseRes;
                                 }
-                            }
-                        } else {
-                            $finalResult[ $keyField ][ 'RESULT_COMPARISON' ][ $keyResult ][] = [
-                                'ID'    => $valueResultItem[ 'ID' ],
-                                'VALUE' => self::checkLimitValueField($valueResultItem[ 'VALUE' ], $keyField)
-                            ];
-                            unset($preFinishDealFields[ $keyField ]);
-                        }
-                    }
-                } else {
-                    if (!is_null($valueResult[ 'ID' ]) && array_key_exists('ITEMS',
-                            $this->listFields[ $keyField ])) {
-                        foreach ($this->listFields[ $keyField ][ 'ITEMS' ] as $keyListFields => $valueListFields) {
-                            if ((int) $valueListFields[ 'ID' ] === $valueResult[ 'ID' ]) {
-                                $finalResult[ $keyField ][ 'RESULT_COMPARISON' ][ $keyResult ][] = [
-                                    'ID'    => $valueResult[ 'ID' ],
-                                    'VALUE' => self::checkLimitValueField($valueListFields[ 'VALUE' ], $keyField)
-                                ];
-                                unset($preFinishDealFields[ $keyField ]);
-                            }
+                                break;
+                            case 'file':
+                            case 'datetime':
+                            case 'string':
+                            case 'date':
+                            default:
+                                var_dump($keyField);
+                                var_dump($this->listFields[ $keyField ][ 'TYPE' ]);
+                                $baseRes = self::checkingMultipleValue($currentModified, $beforeChanging, $keyField,
+                                    $this->listFields[ $keyField ][ 'TYPE' ]);
+                                if (!is_null($baseRes) && !empty($baseRes)) {
+                                    $result[ $keyField ][ 'NAME' ] = $this->listFields[ $keyField ][ 'NAME' ];
+                                    $result[ $keyField ][ 'CODE' ] = $keyField;
+                                    $result[ $keyField ][ 'TYPE' ] = $this->listFields[ $keyField ][ 'TYPE' ];
+                                    $result[ $keyField ][ 'ATTRIBUTES' ] = $this->listFields[ $keyField ][ 'ATTRIBUTES' ];
+                                    $result[ $keyField ][ 'RESULT_COMPARISON' ] = $baseRes;
+                                }
+                                break;
+
                         }
                     } else {
-                        $finalResult[ $keyField ][ 'RESULT_COMPARISON' ][ $keyResult ][] = [
-                            'ID'    => $valueResult[ 'ID' ],
-                            'VALUE' => self::checkLimitValueField($valueResult[ 'VALUE' ], $keyField)
-                        ];
-                        unset($preFinishDealFields[ $keyField ]);
+                        switch ($this->listFields[ $keyField ][ 'TYPE' ]) {
+                            case 'crm_status':
+                            case 'crm_category':
+                                $baseRes = self::checkingStageOrCategoryDeal($currentModified, $beforeChanging,
+                                    $this->listFields[ $keyField ][ 'TYPE' ]);
+                                if (!is_null($baseRes) && !empty($baseRes)) {
+                                    $result[ $keyField ][ 'NAME' ] = $this->listFields[ $keyField ][ 'NAME' ];
+                                    $result[ $keyField ][ 'CODE' ] = $keyField;
+                                    $result[ $keyField ][ 'TYPE' ] = $this->listFields[ $keyField ][ 'TYPE' ];
+                                    $result[ $keyField ][ 'RESULT_COMPARISON' ] = $baseRes;
+                                }
+                                break;
+                            case 'crm_company':
+                            case 'crm_lead':
+                            case 'integer':
+                            case 'employee':
+                            case 'user':
+                            case 'crm_contact':
+                            case 'double':
+                            case 'location':
+                            case 'string':
+                            case 'crm_entity':
+                            case 'crm_currency':
+                            case 'char':
+                            case 'enumeration':
+                            case 'file':
+                            case 'datetime':
+                            case 'date':
+                            default:
+                                $baseRes = self::checkingSingle($currentModified, $beforeChanging, $keyField,
+                                    $this->listFields[ $keyField ][ 'TYPE' ]);
+
+                                if (!is_null($baseRes) && !empty($baseRes)) {
+                                    $result[ $keyField ][ 'NAME' ] = $this->listFields[ $keyField ][ 'NAME' ];
+                                    $result[ $keyField ][ 'CODE' ] = $keyField;
+                                    $result[ $keyField ][ 'TYPE' ] = $this->listFields[ $keyField ][ 'TYPE' ];
+                                    $result[ $keyField ][ 'RESULT_COMPARISON' ] = $baseRes;
+                                }
+                                break;
+                        }
                     }
-
                 }
+            }
 
+
+        return $result;
+    }
+
+    /**
+     * @param  string  $new
+     * @param  string  $old
+     * @param  string  $type
+     * @return array|null
+     */
+    private function checkingStageOrCategoryDeal(string $new, string $old, string $type): ?array
+    {
+        $result = [];
+        switch ($type) {
+            case 'crm_status':
+                $categoryInfoOld = DealCategory::getStageInfos(DealCategory::resolveFromStageID($old))[ $old ];
+                $categoryInfoNew = DealCategory::getStageInfos(DealCategory::resolveFromStageID($new))[ $new ];
+
+                if ($old != $new && !empty($old) && !empty($new)) {
+                    $result[ 'OLD' ][] = [
+                        'VALUE' => $categoryInfoOld[ 'NAME' ],
+                        'COLOR' => $categoryInfoOld[ 'COLOR' ],
+                        'ID'    => $old
+                    ];
+                    $result[ 'NEW' ][] = [
+                        'VALUE' => $categoryInfoNew[ 'NAME' ],
+                        'COLOR' => $categoryInfoNew[ 'COLOR' ],
+                        'ID'    => $new
+                    ];
+                } elseif (empty($old)) {
+                    $result[ 'OLD' ][] = [
+                        'VALUE' => 'новое значение',
+                    ];
+                    $result[ 'NEW' ][] = [
+                        'VALUE' => $categoryInfoNew[ 'NAME' ],
+                        'COLOR' => $categoryInfoNew[ 'COLOR' ],
+                        'ID'    => $new
+                    ];
+                } elseif (empty($new)) {
+                    $result[ 'OLD' ][] = [
+                        'VALUE' => $categoryInfoOld[ 'NAME' ],
+                        'COLOR' => $categoryInfoOld[ 'COLOR' ],
+                        'ID'    => $old
+                    ];
+                    $result[ 'NEW' ][] = [
+                        'VALUE' => 'удалено значение',
+                    ];
+                }
+                break;
+            case 'crm_category':
+                if ($old != $new) {
+                    $result[ 'OLD' ][] = [
+                        'VALUE' => DealCategory::getName($old),
+                        'ID'    => $old
+                    ];
+                    $result[ 'NEW' ][] = [
+                        'VALUE' => DealCategory::getName($new),
+                        'ID'    => $new
+                    ];
+                }
+                break;
+        }
+
+
+        return $result;
+    }
+
+    /**
+     * @param  string  $new
+     * @param  string  $old
+     * @param  string  $key
+     * @param  string  $type
+     * @return array|null
+     */
+    private function checkingSingle(string $new, null|string $old, string $key, string $type): ?array
+    {
+        $result = [];
+        $tmpVal = [$old, $new];
+        $valueField = [];
+        foreach ($tmpVal as $val) {
+            if ($type == "enumeration") {
+                foreach ($this->listFields[ $key ][ 'ITEMS' ] as $valueListFields) {
+                    if ((int) $valueListFields[ 'ID' ] === (int) $val) {
+                        $valueField[ $val ] = $valueListFields[ 'VALUE' ];
+                    }
+                }
+            } elseif ($type == "date" || $type == "datetime") {
+                switch ($val) {
+                    case 'now()':
+                        $valueField[ $val ] = new DateTime();
+                        break;
+                    default:
+                        $valueField[ $val ] = $val;
+                }
+            } elseif ($type == "char") {
+                switch ($val) {
+                    case '1':
+                    case 'Y':
+                        $valueField[ $val ] = 'да';
+                        break;
+                    case '0':
+                    case 'N':
+                        $valueField[ $val ] = 'нет';
+                        break;
+                    default:
+                        $valueField[ $val ] = $val;
+                }
+            } else {
+                $valueField = [
+                    $val => $val,
+                ];
             }
         }
 
-        return self::checkEvent($finalResult);
+        //if ($old != $new && !isset($old) && !isset($new)) {
+        if ($old != $new && (is_string($new) && !strlen($new))) {
+            $result[ 'OLD' ][] = [
+                'VALUE' => $valueField[ $old ],
+                'ID'    => $old
+            ];
+            $result[ 'NEW' ][] = [
+                'VALUE' => $valueField[ $new ],
+                'ID'    => $new
+            ];
+            //} elseif (empty($old) || !isset($old) && !empty($new)) {
+        } elseif ((is_string($old) && !strlen($old)) && (is_string($new) && strlen($new))) {
+            $result[ 'OLD' ][] = [
+                'VALUE' => 'новое значение',
+            ];
+            $result[ 'NEW' ][] = [
+                'VALUE' => $valueField[ $new ],
+                'ID'    => $new
+            ];
+            //} elseif (empty($new) || !isset($new)) {
+        } elseif ((is_string($old) && strlen($old)) && (is_string($new) && !strlen($new))) {
+            $result[ 'OLD' ][] = [
+                'VALUE' => $valueField[ $old ],
+                'ID'    => $old
+            ];
+            $result[ 'NEW' ][] = [
+                'VALUE' => 'удалено значение',
+            ];
+        }
+
+        return $result;
     }
 
-    private function checkEvent(array $arResult): array
+    /**
+     * @param  array  $new
+     * @param  array  $old
+     * @param  string  $key
+     * @return array|null
+     */
+    private function checkingMultipleEnumeration(array $new, array $old, string $key): ?array
     {
+        $result = [];
+        $tmpVal = [$old, $new];
+        $valueField = [];
+
+        foreach ($tmpVal as $value) {
+            foreach ($value as $valueFull) {
+                foreach ($this->listFields[ $key ][ 'ITEMS' ] as $valueListFields) {
+                    if ((int) $valueListFields[ 'ID' ] === (int) $valueFull) {
+                        $valueField[ $valueFull ] = $valueListFields[ 'VALUE' ];
+                    }
+                }
+            }
+        }
+
+        if (in_array($key, self::STRICT_MULTIPLE_FIELDS)) {
+            $maxCountElement = max(count($old), count($new));
+            for ($key = 0; $key < $maxCountElement; $key++) {
+                //if (!isset($old[ $key ]) && isset($new[ $key ])) {
+                if ((is_string($old[ $key ]) && !strlen($old[ $key ])) && (is_string($new[ $key ]) && strlen($new[ $key ]))) {
+                    $result[ 'OLD' ][] = [
+                        'VALUE' => 'новое значение'
+                    ];
+                    $result[ 'NEW' ][] = [
+                        'VALUE' => $valueField[ $new[ $key ] ],
+                        'ID'    => $new[ $key ]
+                    ];
+                    //} elseif (isset($old[ $key ]) && !isset($new[ $key ])) {
+                } elseif ((is_string($old[ $key ]) && strlen($old[ $key ])) && (is_string($new[ $key ]) && !strlen($new[ $key ]))) {
+                    $result[ 'OLD' ][] = [
+                        'VALUE' => $valueField[ $old[ $key ] ],
+                        'ID'    => $old[ $key ]
+                    ];
+                    $result[ 'NEW' ][] = [
+                        'VALUE' => 'удалено значение'
+                    ];
+                } else {
+                    $result[ 'OLD' ][] = [
+                        'VALUE' => $valueField[ $old[ $key ] ],
+                        'ID'    => $old[ $key ]
+                    ];
+                    $result[ 'NEW' ][] = [
+                        'VALUE' => $valueField[ $new[ $key ] ],
+                        'ID'    => $new[ $key ]
+                    ];
+                }
+            }
+        } else {
+            $beforeDiffChangingField = array_diff_assoc($old, $new);
+            $currentDiffModifiedFields = array_diff_assoc($new, $old);
+            $maxCountElement = max(count($old), count($new));
+
+            for ($key = 0; $key < $maxCountElement; $key++) {
+                //if ($beforeDiffChangingField[ $key ] && $currentDiffModifiedFields[ $key ] && $beforeDiffChangingField[ $key ] != $currentDiffModifiedFields[ $key ]) {
+                if ($beforeDiffChangingField[ $key ] && $currentDiffModifiedFields[ $key ] && $beforeDiffChangingField[ $key ] != $currentDiffModifiedFields[ $key ]) {
+                    $result[ 'OLD' ][] = [
+                        'VALUE' => $valueField[ $beforeDiffChangingField[ $key ] ],
+                        'ID'    => $beforeDiffChangingField[ $key ]
+                    ];
+                    $result[ 'NEW' ][] = [
+                        'VALUE' => $valueField[ $currentDiffModifiedFields[ $key ] ],
+                        'ID'    => $currentDiffModifiedFields[ $key ]
+                    ];
+                    //} elseif (!array_key_exists($key, $beforeDiffChangingField) && array_key_exists($key,
+                } elseif (!array_key_exists($key, $beforeDiffChangingField) && array_key_exists($key,
+                        $currentDiffModifiedFields) && !is_null($valueField[ $currentDiffModifiedFields[ $key ] ])) {
+                    $result[ 'OLD' ][] = [
+                        'VALUE' => 'новое значение'
+                    ];
+                    $result[ 'NEW' ][] = [
+                        'VALUE' => $valueField[ $currentDiffModifiedFields[ $key ] ],
+                        'ID'    => $currentDiffModifiedFields[ $key ]
+                    ];
+                    // } elseif (array_key_exists($key, $beforeDiffChangingField) && !array_key_exists($key,
+                } elseif (array_key_exists($key, $beforeDiffChangingField) && !array_key_exists($key,
+                        $currentDiffModifiedFields)) {
+                    $result[ 'OLD' ][] = [
+                        'VALUE' => $valueField[ $beforeDiffChangingField[ $key ] ],
+                        'ID'    => $beforeDiffChangingField[ $key ]
+                    ];
+                    $result[ 'NEW' ][] = [
+                        'VALUE' => 'удалено значение'
+                    ];
+                }
+            }
+
+        }
+        return $result;
+    }
+
+    /**
+     * @param  array  $new
+     * @param  array  $old
+     * @param  string  $key
+     * @param  string  $type
+     * @return array|null
+     */
+    private function checkingMultipleValue(array $new, array $old, string $key, string $type): ?array
+    {
+        $result = [];
+
+        if (in_array($key, self::STRICT_MULTIPLE_FIELDS)) {
+            $maxCountElement = max(count($old), count($new));
+            for ($key = 0; $key < $maxCountElement; $key++) {
+                if (!isset($old[ $key ]) && isset($new[ $key ])) {
+                    $result[ 'OLD' ][] = [
+                        'VALUE' => 'новое значение'
+                    ];
+                    $result[ 'NEW' ][] = [
+                        'VALUE' => $new[ $key ],
+                        'ID'    => $new[ $key ]
+                    ];
+                } elseif (isset($old[ $key ]) && (is_string($new[ $key ]) && !strlen($new[ $key ]))) {
+                    $result[ 'OLD' ][] = [
+                        'VALUE' => $old[ $key ],
+                        'ID'    => $old[ $key ]
+                    ];
+                    $result[ 'NEW' ][] = [
+                        'VALUE' => 'удалено значение'
+                    ];
+                } else {
+                    $result[ 'OLD' ][] = [
+                        'VALUE' => $old[ $key ],
+                        'ID'    => $old[ $key ]
+                    ];
+                    $result[ 'NEW' ][] = [
+                        'VALUE' => $new[ $key ],
+                        'ID'    => $new[ $key ]
+                    ];
+                }
+            }
+
+        } else {
+            $beforeDiffChangingField = array_diff_assoc($old, $new);
+            $currentDiffModifiedFields = array_diff_assoc($new, $old);
+            $maxCountElement = max(count($old), count($new));
+
+            for ($key = 0; $key < $maxCountElement; $key++) {
+                //if ($beforeDiffChangingField[ $key ] && $currentDiffModifiedFields[ $key ] && $beforeDiffChangingField[ $key ] != $currentDiffModifiedFields[ $key ]) {
+                if ($beforeDiffChangingField[ $key ] && $currentDiffModifiedFields[ $key ] && $beforeDiffChangingField[ $key ] != $currentDiffModifiedFields[ $key ]) {
+                    $result[ 'OLD' ][] = [
+                        'VALUE' => $beforeDiffChangingField[ $key ],
+                        'ID'    => $beforeDiffChangingField[ $key ]
+                    ];
+                    $result[ 'NEW' ][] = [
+                        'VALUE' => $currentDiffModifiedFields[ $key ],
+                        'ID'    => $currentDiffModifiedFields[ $key ]
+                    ];
+                } elseif (!array_key_exists($key, $beforeDiffChangingField) && array_key_exists($key,
+                        $currentDiffModifiedFields)) {
+                    $result[ 'OLD' ][] = [
+                        'VALUE' => 'новое значение'
+                    ];
+                    $result[ 'NEW' ][] = [
+                        'VALUE' => $currentDiffModifiedFields[ $key ],
+                        'ID'    => $currentDiffModifiedFields[ $key ]
+                    ];
+                } elseif (array_key_exists($key, $beforeDiffChangingField) && !array_key_exists($key,
+                        $currentDiffModifiedFields)) {
+                    $result[ 'OLD' ][] = [
+                        'VALUE' => $beforeDiffChangingField[ $key ],
+                        'ID'    => $beforeDiffChangingField[ $key ]
+                    ];
+                    $result[ 'NEW' ][] = [
+                        'VALUE' => 'удалено значение'
+                    ];
+                }
+            }
+
+        }
+        return $result;
+    }
+
+    /**
+     * @param  array  $arResult
+     * @return array|string[]|null
+     * @throws LoaderException
+     */
+    private function bakingData(array $arResult): ?array
+    {
+        $result = [];
         $result = [
             'NAME'       => 'Сделка отредактирована #'.$this->currentModifiedFields[ 'ID' ],
             'TYPE_EVENT' => 'EDIT_DEAL_FIELDS'
         ];
-        if (array_key_exists('STAGE_ID', $this->currentModifiedFields)) {
+        if (array_key_exists('STAGE_ID', $this->currentModifiedFields) || array_key_exists('CATEGORY_ID',
+                $this->currentModifiedFields)) {
             if ($this->beforeChangingFields[ 'STAGE_ID' ] != $this->currentModifiedFields[ 'STAGE_ID' ]) {
                 $result = [
                     'NAME'       => 'Смена стадии в сделке #'.$this->currentModifiedFields[ 'ID' ],
                     'TYPE_EVENT' => 'EDIT_DEAL_STAGE',
+                ];
+            } elseif ($this->beforeChangingFields[ 'CATEGORY_ID' ] != $this->currentModifiedFields[ 'CATEGORY_ID' ]) {
+                $result = [
+                    'NAME'       => 'Смена воронки сделки #'.$this->currentModifiedFields[ 'ID' ],
+                    'TYPE_EVENT' => 'EDIT_DEAL_CATEGORY',
                 ];
             }
         }
@@ -393,11 +701,24 @@ class NFDS
         return $result;
     }
 
-
-    public function arrayProcessing(): ?array
+    public function cook(): ?array
     {
-        $preFinishDealFields = self::checkingFields();
-        return self::fillMultipleFieldID($preFinishDealFields);
+        return $this->finResult;
     }
 
 }
+
+
+/*
+ *
+ * поля котоорые не отобразились и не дали ошибку
+ * Вид ВЭД для ООО Экспортер ООО ВЭ - UF_CRM_1657506837
+ *
+ *
+Результат проверки поставщика - UF_CRM_1698783986
+ *
+ *
+ *
+ *
+ *
+ * */

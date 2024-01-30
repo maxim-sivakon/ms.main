@@ -23,8 +23,8 @@ class logHandler
 
             $logOptions = [
                 'OPTION_SAVE_LOG_DATAMANAGER' => 'Y',
-                'OPTION_SAVE_LOG_HISTORY'     => 'N',
-                'OPTION_SAVE_LOG_TIMELINE'    => 'Y'
+//                'OPTION_SAVE_LOG_HISTORY'     => 'N',
+//                'OPTION_SAVE_LOG_TIMELINE'    => 'N'
             ];
 
             foreach ($logOptions as $keyOption => $valueOption) {

@@ -8,11 +8,11 @@ class SaveTimelineDeal implements SaveLogInterface
 {
     public function save(array $arFieldsDeal): bool|int
     {
-        $resultSave = false;
-        var_dump("");
-        var_dump("SaveTimelineDeal");
-        // сохраняем в timeline deal
-        var_dump(3);
-        return 3;
+//        $resultSave = false;
+//        var_dump("");
+//        var_dump("SaveTimelineDeal");
+//        // сохраняем в timeline deal
+//        var_dump(3);
+        return 0;
     }
 }

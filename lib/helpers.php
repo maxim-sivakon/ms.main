@@ -49,32 +49,7 @@ class Helpers
     }
 
 
-    //    /**
-    //     * @param  int  $dealID
-    //     * @param  array  $arFiledsFilter
-    //     * @return array
-    //     */
-    //    public static function getDealData(int $dealID = 0, array $arFiledsFilter = []): array
-    //    {
-    //        $result = [];
-    //
-    //        $entityResult = \CCrmDeal::GetListEx(
-    //            ['SOURCE_ID' => 'DESC'],
-    //            [
-    //                'ID'                => $dealID,
-    //                'CHECK_PERMISSIONS' => 'N'
-    //            ],
-    //            false,
-    //            false,
-    //            $arFiledsFilter
-    //        );
-    //
-    //        while ($entity = $entityResult->fetch()) {
-    //            $result = $entity;
-    //        }
-    //
-    //        return $result;
-    //    }
+
 
     /**
      * @param  array|string  $listField
@@ -83,25 +58,26 @@ class Helpers
     public static function formatFieldGrid(array|string $listField): mixed
     {
         $dataListField = unserialize(base64_decode($listField));
-        $codes = ['OLD', 'NEW'];
 
+//        ?><!--<pre>--><?// var_dump($dataListField); ?><!--</pre>--><?php
 
         $result = '<table><tbody>';
 
-        foreach ($dataListField as $keyField => $valueFiled) {
-
-            $result .= '<tr><th colspan="2"><b field-code="'.$valueFiled[ 'CODE' ].'">'.$valueFiled[ 'NAME' ].':</b></th></tr>';
-
-            foreach ($codes as $code) {
-                foreach ($valueFiled[ "RESULT_COMPARISON" ][ $code ] as $key => $value) {
-                    if ($code == 'OLD') {
-                        $result .= '<tr><td>'.self::checkfieldData($value[ 'VALUE' ], $keyField).'</td><td>→</td>';
-                    } else {
-                        $result .= '<td>'.self::checkfieldData($value[ 'VALUE' ], $keyField).'</td></tr>';
-                    }
+        if (empty($dataListField)){
+            $result .= '<tr><th colspan="2"><b>результат не сохранен</b></th></tr>';
+        }else{
+            foreach ($dataListField as $keyField => $valueFiled) {
+                $maxCountElement = max(count($valueFiled[ "RESULT_COMPARISON" ][ 'OLD' ]), count($valueFiled[ "RESULT_COMPARISON" ][ 'NEW' ]));
+                $result .= '<tr><th colspan="2"><b field-code="'.$valueFiled[ 'CODE' ].'">'.$valueFiled[ 'NAME' ].':</b></th></tr>';
+                for($i = 0; $i < $maxCountElement; $i++){
+                    $result .= '<tr><td>'.$valueFiled[ "RESULT_COMPARISON" ][ 'OLD' ][$i]['VALUE'].'</td><td>→</td>';
+                    $result .= '<td>'.$valueFiled[ "RESULT_COMPARISON" ][ 'NEW' ][$i]['VALUE'].'</td></tr>';
                 }
             }
         }
+
+
+
         $result .= '</tbody></table>';
 
         return $result;
@@ -124,11 +100,14 @@ class Helpers
                     'USER_PROFILE_URL' => Option::get('intranet', 'path_user', '', SITE_ID).'/'
                 ]
             );
-        } else if($codeFiled == 'STAGE_ID'){
-            $categoryEntryID = DealCategory::resolveFromStageID($valueFiled);
-            $categoryInfo = DealCategory::getStageInfos($categoryEntryID)[$valueFiled];
-            $valueFiled = '<div style="color:' . self::detectLightDarkColor($categoryInfo['COLOR']) . ';background-color:'.$categoryInfo['COLOR'].'!important;padding: 4px 8px;border-radius: 5px;font-weight: 600;">'. $categoryInfo['NAME'] .'</div>';
         }
+//        } else if($codeFiled == 'STAGE_ID'){
+//
+//            var_dump($valueFiled);
+////            $categoryEntryID = DealCategory::resolveFromStageID($valueFiled);
+////            $categoryInfo = DealCategory::getStageInfos($categoryEntryID)[$valueFiled];
+//            $valueFiled = '<div style="color:' . self::detectLightDarkColor($valueFiled['COLOR']) . ';background-color:'.$valueFiled['COLOR'].'!important;padding: 4px 8px;border-radius: 5px;font-weight: 600;">'. $valueFiled['VALUE'] .'</div>';
+//        }
         return $valueFiled;
     }
 
@@ -148,32 +127,6 @@ class Helpers
         return $returnPriorityColor;
     }
 
-    public static function drawTableComparisonFields(array|string $listField): mixed
-    {
-        $dataListField = unserialize(base64_decode($listField));
-        $codes = ['OLD', 'NEW'];
-
-
-        $result = '<table><tbody>';
-
-        foreach ($dataListField as $keyField => $valueFiled) {
-
-            $result .= '<tr><th colspan="2"><b field-code="'.$valueFiled[ 'CODE' ].'">'.$valueFiled[ 'NAME' ].':</b></th></tr>';
-
-            foreach ($codes as $code) {
-                foreach ($valueFiled[ "RESULT_COMPARISON" ][ $code ] as $key => $value) {
-                    if ($code == 'OLD') {
-                        $result .= '<tr><td>'.self::checkfieldData($value[ 'VALUE' ], $keyField).'</td><td>→</td>';
-                    } else {
-                        $result .= '<td>'.self::checkfieldData($value[ 'VALUE' ], $keyField).'</td></tr>';
-                    }
-                }
-            }
-        }
-        $result .= '</tbody></table>';
-
-        return $result;
-    }
 
 
 }
