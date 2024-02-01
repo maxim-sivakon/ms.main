@@ -11,16 +11,24 @@ use \Bitrix\Crm\Category\DealCategory;
 
 interface I_NFDS
 {
-    public function codeCrashesDuringVerification(string $exception): array;
-    public function garbageCleaning();
+    public function garbageCleaning(array $currentModifiedFields): array;
+
     public function getDealFields(): array;
+
     public function getDeal(int $dealID = 0, array $arFiledsFilter = []): array;
+
     public function controlField(): array;
+
     public function checkingStageOrCategoryDeal(string $new, string $old, string $type): array;
+
     public function checkingSingle(string $new, null|string $old, string $key, string $type): array;
-    public function checkingMultipleEnumeration(array $new, array $old, string $key): array;
-    public function checkingMultipleValue(array $new, array $old, string $key, string $type): array;
+
+    public function checkingMultipleEnumeration(array $new, null|array $old, string $key): array;
+
+    public function checkingMultipleValue(array $new, null|array $old, string $key, string $type): array;
+
     public function bakingData(array $arResult): array;
+
     public function cook(): ?array;
 }
 
@@ -29,6 +37,7 @@ final class NFDS implements I_NFDS
     public const dealID = 0;
     private array $beforeChangingFields;
     private array $currentModifiedFields;
+    private array $currentModifiedFieldsSave;
     private array $listFields;
     private const MAP_FILED_NAME         = [
         'ID'                    => 'Идентификатор элемента',
@@ -102,24 +111,20 @@ final class NFDS implements I_NFDS
      */
     public function __construct(array $currentModifiedFields)
     {
-        $this->currentModifiedFields = $currentModifiedFields;
-        try {
-            if (array_key_exists('ID', $this->currentModifiedFields) && $this->currentModifiedFields[ 'ID' ] > 0) {
-                $this->dealID = $this->currentModifiedFields[ 'ID' ];
-                if (Loader::IncludeModule('crm')) {
-                    $this->listFields = self::getDealFields();
-                    self::garbageCleaning();
-                    $this->beforeChangingFields = self::getDeal((int) $this->dealID, $this->currentModifiedFields);
-                    $preBuild = $this->controlField();
-                    $this->finResult = $this->bakingData($preBuild);
-                } else {
-                    throw new \Exception('No include module crm.');
-                }
+        $this->currentModifiedFieldsSave = $currentModifiedFields;
+        if (array_key_exists('ID', $currentModifiedFields) && $currentModifiedFields[ 'ID' ] > 0) {
+            $this->dealID = $currentModifiedFields[ 'ID' ];
+            if (Loader::IncludeModule('crm')) {
+                $this->listFields = self::getDealFields();
+                $this->currentModifiedFields = self::garbageCleaning($currentModifiedFields);
+                $this->beforeChangingFields = self::getDeal((int) $this->dealID, $this->currentModifiedFields);
+                $preBuild = $this->controlField();
+                $this->finResult = $this->bakingData($preBuild);
             } else {
-                throw new \Exception('No ID deal or invalid ID!');
+                throw new \Exception('No include module crm.');
             }
-        } catch (\Exception $e) {
-            return $this->codeCrashesDuringVerification($e);
+        } else {
+            throw new \Exception('No ID deal or invalid ID!');
         }
     }
 
@@ -128,9 +133,9 @@ final class NFDS implements I_NFDS
      *
      * @return array
      */
-    public function garbageCleaning()
+    public function garbageCleaning(array $currentModifiedFields): array
     {
-        $arResultClean = $this->currentModifiedFields;
+        $arResultClean = $currentModifiedFields;
 
         $stepCleaning = ['1', '2'];
 
@@ -147,9 +152,10 @@ final class NFDS implements I_NFDS
                     break;
                 case '2':
                     foreach ($arResultClean as $key => $value) {
+                        // значения равные 0 удаляем с массива
                         if (in_array($key, $this->listFields) || $value == 'NULL' || is_null($value) || in_array($key,
                                 self::IGNORING_FIELDS)
-                            || (is_array($value) && empty($value))) {
+                            || (is_array($value) && empty($value)) || $value == 0) {
                             unset($arResultClean[ $key ]);
                         }
                     }
@@ -157,8 +163,25 @@ final class NFDS implements I_NFDS
             }
         }
 
-        $this->currentModifiedField = $arResultClean;
+        $result = ['type_array'  => [], 'type_string' => []];
+        foreach ($arResultClean as $keyField => $valueFiled) {
+            $currentModified = $arResultClean[ $keyField ];
+            if ((isset($this->listFields[ $keyField ][ 'ATTRIBUTES' ])
+                    && array_key_exists('ATTRIBUTES', $this->listFields[ $keyField ])
+                    && in_array('MUL', $this->listFields[ $keyField ][ 'ATTRIBUTES' ]))
+                || gettype($currentModified) == 'array') {
+                $result[ 'type_array' ][$keyField] = $arResultClean[ $keyField ];
+            } else {
+                /// ошибка в запись в строку!!!!!! в строку прилетает массив со всеми одиночками
+                if(!settype($arResultClean[ $keyField ], 'string')){
+                    $result[ 'type_string' ][$keyField] = $arResultClean[ $keyField ];
+                }else{
+                    $result[ 'type_array' ][$keyField] = $arResultClean[ $keyField ];
+                }
+            }
+        }
 
+        return $result;
     }
 
     /**
@@ -225,18 +248,6 @@ final class NFDS implements I_NFDS
     }
 
     /**
-     * Текущей метод обязан отработать если произошло аварийное остановка алгоритма проверки полей.
-     * Данный метод должен сделать минимальное сохранение-обработка данных для логирования.
-     *
-     * @return array
-     */
-    public function codeCrashesDuringVerification($error): array
-    {
-        $arResult = [];
-
-        return $arResult;
-    }
-    /**
      *
      *  Предварительно перед тем как начать обработку измененного значения поля сделки, нужно получить список полей сделки и основывать проверку поля и
      *  после проверять сохраненные значения основываясь на настройках поля.
@@ -250,83 +261,54 @@ final class NFDS implements I_NFDS
      *  Помимо ключа ATTRIBUTES есть ключ TYPE - в котором описывается тип поля,
      *  то есть поле в виде файла, контакта, компании и так далее, каждый тип на мой взгляд лучше обрабатывать по отдельности.
      *
-     *
      * @return array
      */
     public function controlField(): array
     {
         $result = [];
-
         foreach ($this->currentModifiedFields as $keyField => $valueFiled) {
-
-            $currentModified = $this->currentModifiedFields[ $keyField ];
-            $beforeChanging = $this->beforeChangingFields[ $keyField ];
-
-            if (!$this->listFields[ $keyField ][ 'TYPE' ]) {
-                $this->listFields[ $keyField ][ 'TYPE' ] = 'notype';
-            }
-
-            if (gettype($currentModified) == 'array' && gettype($beforeChanging) == 'NULL') {
-                $beforeChanging = [];
-                settype($beforeChanging, "array");
-            } elseif (gettype($beforeChanging) == 'string') {
-                settype($currentModified, 'string');
-            } elseif (gettype($beforeChanging) == 'array') {
-                settype($currentModified, 'array');
-            }else{
-                settype($currentModified, 'string');
-
-
-            }
-
-            if (!is_null($currentModified) || $currentModified == 'NULL') {
-
-                if (!is_null($this->listFields[ $keyField ][ 'ATTRIBUTES' ])
-                    && in_array('MUL', $this->listFields[ $keyField ][ 'ATTRIBUTES' ])
-                    || gettype($currentModified) == 'array' && gettype($beforeChanging) == 'array') {
-
-                    switch ($this->listFields[ $keyField ][ 'TYPE' ]) {
+            foreach ($valueFiled as $key => $value) {
+                $currentModified = $this->currentModifiedFields[ $keyField ];
+                $beforeChanging = $this->beforeChangingFields[ $key ];
+                if ($keyField == 'type_array') {
+                    switch ($this->listFields[ $key ][ 'TYPE' ]) {
                         case 'enumeration':
-                            $baseRes = self::checkingMultipleEnumeration($currentModified, $beforeChanging,
-                                $keyField);
+                            $baseRes = self::checkingMultipleEnumeration($currentModified, $beforeChanging, $key);
                             if (!is_null($baseRes) && !empty($baseRes)) {
-                                $result[ $keyField ][ 'NAME' ] = $this->listFields[ $keyField ][ 'NAME' ];
-                                $result[ $keyField ][ 'CODE' ] = $keyField;
-                                $result[ $keyField ][ 'TYPE' ] = $this->listFields[ $keyField ][ 'TYPE' ];
-                                $result[ $keyField ][ 'ATTRIBUTES' ] = $this->listFields[ $keyField ][ 'ATTRIBUTES' ];
-                                $result[ $keyField ][ 'RESULT_COMPARISON' ] = $baseRes;
+                                $result[ $key ][ 'NAME' ] = $this->listFields[ $key ][ 'NAME' ];
+                                $result[ $key ][ 'CODE' ] = $key;
+                                $result[ $key ][ 'TYPE' ] = $this->listFields[ $key ][ 'TYPE' ];
+                                $result[ $key ][ 'ATTRIBUTES' ] = $this->listFields[ $key ][ 'ATTRIBUTES' ];
+                                $result[ $key ][ 'RESULT_COMPARISON' ] = $baseRes;
                             }
                             break;
                         case 'file':
                         case 'datetime':
                         case 'string':
                         case 'date':
-                        default:
-                            var_dump($keyField);
-                            var_dump($this->listFields[ $keyField ][ 'TYPE' ]);
-                            $baseRes = self::checkingMultipleValue($currentModified, $beforeChanging, $keyField,
-                                $this->listFields[ $keyField ][ 'TYPE' ]);
+                            $baseRes = self::checkingMultipleValue($currentModified, $beforeChanging, $key,
+                                $this->listFields[ $key ][ 'TYPE' ]);
                             if (!is_null($baseRes) && !empty($baseRes)) {
-                                $result[ $keyField ][ 'NAME' ] = $this->listFields[ $keyField ][ 'NAME' ];
-                                $result[ $keyField ][ 'CODE' ] = $keyField;
-                                $result[ $keyField ][ 'TYPE' ] = $this->listFields[ $keyField ][ 'TYPE' ];
-                                $result[ $keyField ][ 'ATTRIBUTES' ] = $this->listFields[ $keyField ][ 'ATTRIBUTES' ];
-                                $result[ $keyField ][ 'RESULT_COMPARISON' ] = $baseRes;
+                                $result[ $key ][ 'NAME' ] = $this->listFields[ $key ][ 'NAME' ];
+                                $result[ $key ][ 'CODE' ] = $key;
+                                $result[ $key ][ 'TYPE' ] = $this->listFields[ $key ][ 'TYPE' ];
+                                $result[ $key ][ 'ATTRIBUTES' ] = $this->listFields[ $key ][ 'ATTRIBUTES' ];
+                                $result[ $key ][ 'RESULT_COMPARISON' ] = $baseRes;
                             }
                             break;
 
                     }
-                } else {
-                    switch ($this->listFields[ $keyField ][ 'TYPE' ]) {
+                } elseif ($keyField == 'type_string') {
+                    switch ($this->listFields[ $key ][ 'TYPE' ]) {
                         case 'crm_status':
                         case 'crm_category':
                             $baseRes = self::checkingStageOrCategoryDeal($currentModified, $beforeChanging,
-                                $this->listFields[ $keyField ][ 'TYPE' ]);
+                                $this->listFields[ $key ][ 'TYPE' ]);
                             if (!is_null($baseRes) && !empty($baseRes)) {
-                                $result[ $keyField ][ 'NAME' ] = $this->listFields[ $keyField ][ 'NAME' ];
-                                $result[ $keyField ][ 'CODE' ] = $keyField;
-                                $result[ $keyField ][ 'TYPE' ] = $this->listFields[ $keyField ][ 'TYPE' ];
-                                $result[ $keyField ][ 'RESULT_COMPARISON' ] = $baseRes;
+                                $result[ $key ][ 'NAME' ] = $this->listFields[ $key ][ 'NAME' ];
+                                $result[ $key ][ 'CODE' ] = $key;
+                                $result[ $key ][ 'TYPE' ] = $this->listFields[ $key ][ 'TYPE' ];
+                                $result[ $key ][ 'RESULT_COMPARISON' ] = $baseRes;
                             }
                             break;
                         case 'crm_company':
@@ -345,22 +327,21 @@ final class NFDS implements I_NFDS
                         case 'file':
                         case 'datetime':
                         case 'date':
-                        default:
-                            $baseRes = self::checkingSingle($currentModified, $beforeChanging, $keyField,
-                                $this->listFields[ $keyField ][ 'TYPE' ]);
-
+                            var_dump($key);
+                            var_dump($currentModified);
+                            $baseRes = self::checkingSingle($currentModified, $beforeChanging, $key,
+                                $this->listFields[ $key ][ 'TYPE' ]);
                             if (!is_null($baseRes) && !empty($baseRes)) {
-                                $result[ $keyField ][ 'NAME' ] = $this->listFields[ $keyField ][ 'NAME' ];
-                                $result[ $keyField ][ 'CODE' ] = $keyField;
-                                $result[ $keyField ][ 'TYPE' ] = $this->listFields[ $keyField ][ 'TYPE' ];
-                                $result[ $keyField ][ 'RESULT_COMPARISON' ] = $baseRes;
+                                $result[ $key ][ 'NAME' ] = $this->listFields[ $key ][ 'NAME' ];
+                                $result[ $key ][ 'CODE' ] = $key;
+                                $result[ $key ][ 'TYPE' ] = $this->listFields[ $key ][ 'TYPE' ];
+                                $result[ $key ][ 'RESULT_COMPARISON' ] = $baseRes;
                             }
                             break;
                     }
                 }
             }
         }
-
 
         return $result;
     }
@@ -475,7 +456,6 @@ final class NFDS implements I_NFDS
             }
         }
 
-        //if ($old != $new && !isset($old) && !isset($new)) {
         if ($old != $new && (is_string($new) && !strlen($new))) {
             $result[ 'OLD' ][] = [
                 'VALUE' => $valueField[ $old ],
@@ -485,7 +465,6 @@ final class NFDS implements I_NFDS
                 'VALUE' => $valueField[ $new ],
                 'ID'    => $new
             ];
-            //} elseif (empty($old) || !isset($old) && !empty($new)) {
         } elseif ((is_string($old) && !strlen($old)) && (is_string($new) && strlen($new))) {
             $result[ 'OLD' ][] = [
                 'VALUE' => 'новое значение',
@@ -494,7 +473,6 @@ final class NFDS implements I_NFDS
                 'VALUE' => $valueField[ $new ],
                 'ID'    => $new
             ];
-            //} elseif (empty($new) || !isset($new)) {
         } elseif ((is_string($old) && strlen($old)) && (is_string($new) && !strlen($new))) {
             $result[ 'OLD' ][] = [
                 'VALUE' => $valueField[ $old ],
@@ -514,8 +492,11 @@ final class NFDS implements I_NFDS
      * @param  string  $key
      * @return array|null
      */
-    public function checkingMultipleEnumeration(array $new, array $old, string $key): array
+    public function checkingMultipleEnumeration(array $new, null|array $old, string $key): array
     {
+        if(is_null($old)){
+            $old = [];
+        }
         $result = [];
         $tmpVal = [$old, $new];
         $valueField = [];
@@ -612,9 +593,12 @@ final class NFDS implements I_NFDS
      * @param  string  $type
      * @return array|null
      */
-    public function checkingMultipleValue(array $new, array $old, string $key, string $type): array
+    public function checkingMultipleValue(array $new, null|array $old, string $key, string $type): array
     {
         $result = [];
+        if(is_null($old)){
+            $old = [];
+        }
 
         if (in_array($key, self::STRICT_MULTIPLE_FIELDS)) {
             $maxCountElement = max(count($old), count($new));
@@ -697,29 +681,29 @@ final class NFDS implements I_NFDS
     {
         $result = [];
         $result = [
-            'NAME'       => 'Сделка отредактирована #'.$this->currentModifiedFields[ 'ID' ],
+            'ID_DEAL'    => $this->dealID,
+            'NAME'       => 'Сделка отредактирована #'.$this->dealID,
             'TYPE_EVENT' => 'EDIT_DEAL_FIELDS'
         ];
-        if (array_key_exists('STAGE_ID', $this->currentModifiedFields) || array_key_exists('CATEGORY_ID',
-                $this->currentModifiedFields)) {
-            if ($this->beforeChangingFields[ 'STAGE_ID' ] != $this->currentModifiedFields[ 'STAGE_ID' ]) {
-                $result = [
-                    'NAME'       => 'Смена стадии в сделке #'.$this->currentModifiedFields[ 'ID' ],
+        if (array_key_exists('STAGE_ID', $this->currentModifiedFieldsSave) || array_key_exists('CATEGORY_ID',
+                $this->currentModifiedFieldsSave)) {
+            if ($this->beforeChangingFields[ 'STAGE_ID' ] != $this->currentModifiedFieldsSave[ 'STAGE_ID' ]) {
+                $result += [
+                    'NAME'       => 'Смена стадии в сделке #'.$this->dealID,
                     'TYPE_EVENT' => 'EDIT_DEAL_STAGE',
                 ];
-            } elseif ($this->beforeChangingFields[ 'CATEGORY_ID' ] != $this->currentModifiedFields[ 'CATEGORY_ID' ]) {
-                $result = [
-                    'NAME'       => 'Смена воронки сделки #'.$this->currentModifiedFields[ 'ID' ],
+            } elseif ($this->beforeChangingFields[ 'CATEGORY_ID' ] != $this->currentModifiedFieldsSave[ 'CATEGORY_ID' ]) {
+                $result += [
+                    'NAME'       => 'Смена воронки сделки #'.$this->dealID,
                     'TYPE_EVENT' => 'EDIT_DEAL_CATEGORY',
                 ];
             }
         }
-        $typeDevice = \Helpers::detectUserDevice();
+        $typeDevice = Helpers::detectUserDevice();
         $result += [
             'TYPE_DEVICE'         => $typeDevice->getUserAgent(),
             'USER_IP'             => $typeDevice->getHttpHeaders()[ "HTTP_X_FORWARDED_FOR" ],
-            'MODIFY_BY_ID'        => $this->currentModifiedFields[ 'MODIFY_BY_ID' ],
-            'ID_DEAL'             => $this->currentModifiedFields[ 'ID' ],
+            'MODIFY_BY_ID'        => $this->currentModifiedFieldsSave[ 'MODIFY_BY_ID' ],
             'COUNT_MODIFI_FIELDS' => count($arResult),
         ];
 
@@ -736,6 +720,7 @@ final class NFDS implements I_NFDS
     {
         return $this->finResult;
     }
-    public function __destruct() {}
+
+    public function __destruct() { }
 
 }
