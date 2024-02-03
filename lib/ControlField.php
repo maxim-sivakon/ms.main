@@ -5,10 +5,11 @@ namespace MS\Main;
 use \Bitrix\Main;
 use \Bitrix\Main\{LoaderException, Loader, Type\DateTime, Localization\Loc};
 use \Bitrix\Crm\Category\DealCategory;
+
 final class ControlField
 {
-    public const TYPE_ARRAY  = 'array';
-    public const TYPE_STRING  = 'string';
+    public const TYPE_ARRAY              = 'array';
+    public const TYPE_STRING             = 'string';
     public const TYPE_FIELD_ENUMERATION  = 'enumeration';
     public const TYPE_FIELD_FILE         = 'file';
     public const TYPE_FIELD_DATE         = 'date';
@@ -101,20 +102,20 @@ final class ControlField
     /** @var array */
     protected array $listFieldsDeal;
     /** @var array */
-    protected array $strictMultipleFields = ['UF_CRM_1600310015'];
+    protected array $strictMultipleFields;
     /** @var array */
-    protected array $ignoringFields = ['CONTACT_BINDINGS'];
+    protected array $ignoringFields;
 
     public function __construct(array $currentModifiedFields)
     {
         if (isset($currentModifiedFields[ 'ID' ]) && $currentModifiedFields[ 'ID' ] > 0) {
             if (Loader::IncludeModule('crm')) {
                 $this->dealID = $currentModifiedFields[ 'ID' ];
+                $this->strictMultipleFields = $this->setStrictMultipleFields();
+                $this->ignoringFields = $this->setIgnoringFields();
                 $this->listFieldsDeal = $this->getDealFields();
                 $this->modifiedFields = $this->normalizeFields($currentModifiedFields);
                 $this->notModifiedFields = $this->getDeal($this->getID(), $this->getModifiedFields());
-                $this->strictMultipleFields = ['UF_CRM_1600310015'];
-                $this->ignoringFields = ['CONTACT_BINDINGS'];
             } else {
                 throw new LoaderException('No include module crm.');
             }
@@ -127,7 +128,7 @@ final class ControlField
 
     public function getID(): int
     {
-        return (int)$this->dealID;
+        return (int) $this->dealID;
     }
 
     public function getNotModifiedFields(): array
@@ -151,9 +152,21 @@ final class ControlField
         return $this->listFieldsDeal;
     }
 
+    public function setStrictMultipleFields(): array
+    {
+        $strictMultipleFields = ['UF_CRM_1600310015'];
+        return $strictMultipleFields;
+    }
+
     public function getStrictMultipleFields(): array
     {
         return $this->strictMultipleFields;
+    }
+
+    public function setIgnoringFields(): array
+    {
+        $ignoringFields = ['CONTACT_BINDINGS'];
+        return $ignoringFields;
     }
 
     public function getIgnoringFields(): array
@@ -292,33 +305,37 @@ final class ControlField
         $resultComparing = [];
         foreach ($this->getModifiedFields() as $keyTypeOfDataField => $field) {
             foreach ($field as $keyField => $valueField) {
-                if(static::TYPE_ARRAY === $keyTypeOfDataField){
-                    $resultComparing[$keyField] = $this->comparingFieldsAsAnArray($valueField, $keyField);
-                } elseif(static::TYPE_STRING === $keyTypeOfDataField){
-                    foreach ($valueField as $key => $value){
-                        $resultComparing[$keyField] = $this->comparingFieldsAsSingleOnes($value, $key);
+                if (static::TYPE_ARRAY === $keyTypeOfDataField) {
+                    $resultComparing[ $keyField ] = $this->comparingFieldsAsAnArray($valueField, $keyField);
+                } elseif (static::TYPE_STRING === $keyTypeOfDataField) {
+                    foreach ($valueField as $key => $value) {
+                        $resultComparing[ $keyField ] = $this->comparingFieldsAsSingleOnes($value, $key);
                     }
                 }
             }
         }
-        $resultComparing[ 'MODIFY_BY_ID' ] = $this->getModifiedFields()['MODIFY_BY_ID'];
+        $resultComparing[ 'MODIFY_BY_ID' ] = $this->getModifiedFields()[ 'MODIFY_BY_ID' ];
         return $resultComparing;
     }
 
-    public function comparingFieldsAsAnArray(array $valueField, string $keyField):array{
+    public function comparingFieldsAsAnArray(array $valueField, string $keyField): array
+    {
         $resultComparing = [];
 
         return [];
     }
-    public function comparingFieldsAsSingleOnes(mixed $valueField, string $keyField):array{
+
+    public function comparingFieldsAsSingleOnes(mixed $valueField, string $keyField): array
+    {
         $resultComparingFields = [];
         $resultComparing = [];
         switch ($this->getDealFields()[ $keyField ][ 'TYPE' ]) {
             case static::TYPE_FIELD_CRM_STATUS:
-                $resultComparing = $this->comparingStageDeal($this->getNotModifiedFields()[$keyField], $valueField);
+                $resultComparing = $this->comparingStageDeal($this->getNotModifiedFields()[ $keyField ], $valueField);
                 break;
             case static::TYPE_FIELD_CRM_CATEGORY:
-                $resultComparing = $this->comparingCategoryDeal($this->getNotModifiedFields()[$keyField], $valueField);
+                $resultComparing = $this->comparingCategoryDeal($this->getNotModifiedFields()[ $keyField ],
+                    $valueField);
                 break;
             case static::TYPE_FIELD_DATETIME:
             case static::TYPE_FIELD_DATE:
@@ -382,7 +399,7 @@ final class ControlField
             $resultComparing[ 'NEW' ][] = [
                 'VALUE' => 'удалено значение',
             ];
-        }else{
+        } else {
             $resultComparing[ 'OLD' ][] = [
                 'VALUE' => false,
             ];
@@ -393,6 +410,7 @@ final class ControlField
 
         return $resultComparing;
     }
+
     final public function comparingCategoryDeal(string $old, string $new): array
     {
         $resultComparing = [];
@@ -422,7 +440,7 @@ final class ControlField
             $resultComparing[ 'NEW' ][] = [
                 'VALUE' => 'удалено значение',
             ];
-        }else{
+        } else {
             $resultComparing[ 'OLD' ][] = [
                 'VALUE' => false,
             ];
