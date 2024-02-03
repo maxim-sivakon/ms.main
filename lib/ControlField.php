@@ -5,42 +5,10 @@ namespace MS\Main;
 use \Bitrix\Main;
 use \Bitrix\Main\{LoaderException, Loader, Type\DateTime, Localization\Loc};
 use \Bitrix\Crm\Category\DealCategory;
-
-interface ControlFieldInterface
+final class ControlField
 {
-    public function getID(): int;
-
-    public function getNotModifiedFields(): array;
-
-    public function getModifiedFields(): array;
-
-    public function setModifiedFields(array $fields): self;
-
-    public function getListFieldsDeal(): array;
-
-    public function getStrictMultipleFields(): array;
-
-    public function getIgnoringFields(): array;
-
-    public function getDealFields(): array;
-
-    public function setNameDealFields(array $fields): array;
-
-    public function setTypeDealFields(array $fields): array;
-
-    public function normalizeFields(array $fields): array;
-
-    public function clearingArrayKeyChar(array $fields): array;
-
-    public function clearingUnusedFieldsInDeal(array $fields): array;
-
-    public function distributionByDataType(array $fields): array;
-
-    public function processLogic(): array;
-}
-
-final class ControlField implements ControlFieldInterface
-{
+    public const TYPE_ARRAY  = 'array';
+    public const TYPE_STRING  = 'string';
     public const TYPE_FIELD_ENUMERATION  = 'enumeration';
     public const TYPE_FIELD_FILE         = 'file';
     public const TYPE_FIELD_DATE         = 'date';
@@ -125,17 +93,17 @@ final class ControlField implements ControlFieldInterface
     ];
 
     /** @var integer */
-    protected $dealID;
+    protected int $dealID;
     /** @var array */
-    protected $notModifiedFields;
+    protected array $notModifiedFields;
     /** @var array */
-    protected $modifiedFields;
+    protected array $modifiedFields;
     /** @var array */
-    protected $listFieldsDeal;
+    protected array $listFieldsDeal;
     /** @var array */
-    protected $strictMultipleFields;
+    protected array $strictMultipleFields = ['UF_CRM_1600310015'];
     /** @var array */
-    protected $ignoringFields;
+    protected array $ignoringFields = ['CONTACT_BINDINGS'];
 
     public function __construct(array $currentModifiedFields)
     {
@@ -144,7 +112,7 @@ final class ControlField implements ControlFieldInterface
                 $this->dealID = $currentModifiedFields[ 'ID' ];
                 $this->listFieldsDeal = $this->getDealFields();
                 $this->modifiedFields = $this->normalizeFields($currentModifiedFields);
-                $this->notModifiedFields = [];
+                $this->notModifiedFields = $this->getDeal($this->getID(), $this->getModifiedFields());
                 $this->strictMultipleFields = ['UF_CRM_1600310015'];
                 $this->ignoringFields = ['CONTACT_BINDINGS'];
             } else {
@@ -159,7 +127,7 @@ final class ControlField implements ControlFieldInterface
 
     public function getID(): int
     {
-        return $this->dealID;
+        return (int)$this->dealID;
     }
 
     public function getNotModifiedFields(): array
@@ -193,7 +161,7 @@ final class ControlField implements ControlFieldInterface
         return $this->ignoringFields;
     }
 
-    public function getDealFields(): array
+    protected function getDealFields(): array
     {
         global $USER_FIELD_MANAGER;
         $arDeal = \CCrmDeal::GetFieldsInfo();
@@ -209,6 +177,27 @@ final class ControlField implements ControlFieldInterface
         $arDeal = $this->setTypeDealFields($arDeal);
 
         return $arDeal;
+    }
+
+    protected function getDeal(int $dealID = 0, array $fieldsFilter = []): array
+    {
+        $dbResult = \CCrmDeal::GetListEx(
+            ['SOURCE_ID' => 'DESC'],
+            [
+                'ID'                => $dealID,
+                'CHECK_PERMISSIONS' => 'N'
+            ],
+            false,
+            false,
+            array_keys($fieldsFilter)
+        );
+
+        $arResult = [];
+        while ($entity = $dbResult->fetch()) {
+            $arResult = $entity;
+        }
+
+        return $arResult;
     }
 
     public function setNameDealFields(array $fields): array
@@ -288,10 +277,10 @@ final class ControlField implements ControlFieldInterface
             if ((isset($this->getListFieldsDeal[ $key ][ 'ATTRIBUTES' ])
                     && in_array('MUL', $this->getListFieldsDeal[ $key ][ 'ATTRIBUTES' ]))
                 || gettype($value) == 'array') {
-                $listTypeOfData[ 'type_array' ][ $key ] = $value;
+                $listTypeOfData[ 'array' ][ $key ] = $value;
             } else {
                 settype($value, 'string');
-                $listTypeOfData[ 'type_string' ][ $key ] = $value;
+                $listTypeOfData[ 'string' ][ $key ] = $value;
             }
         }
 
@@ -300,8 +289,151 @@ final class ControlField implements ControlFieldInterface
 
     public function processLogic(): array
     {
+        $resultComparing = [];
+        foreach ($this->getModifiedFields() as $keyTypeOfDataField => $field) {
+            foreach ($field as $keyField => $valueField) {
+                if(static::TYPE_ARRAY === $keyTypeOfDataField){
+                    $resultComparing[$keyField] = $this->comparingFieldsAsAnArray($valueField, $keyField);
+                } elseif(static::TYPE_STRING === $keyTypeOfDataField){
+                    foreach ($valueField as $key => $value){
+                        $resultComparing[$keyField] = $this->comparingFieldsAsSingleOnes($value, $key);
+                    }
+                }
+            }
+        }
+        $resultComparing[ 'MODIFY_BY_ID' ] = $this->getModifiedFields()['MODIFY_BY_ID'];
+        return $resultComparing;
+    }
+
+    public function comparingFieldsAsAnArray(array $valueField, string $keyField):array{
+        $resultComparing = [];
+
         return [];
     }
+    public function comparingFieldsAsSingleOnes(mixed $valueField, string $keyField):array{
+        $resultComparingFields = [];
+        $resultComparing = [];
+        switch ($this->getDealFields()[ $keyField ][ 'TYPE' ]) {
+            case static::TYPE_FIELD_CRM_STATUS:
+                $resultComparing = $this->comparingStageDeal($this->getNotModifiedFields()[$keyField], $valueField);
+                break;
+            case static::TYPE_FIELD_CRM_CATEGORY:
+                $resultComparing = $this->comparingCategoryDeal($this->getNotModifiedFields()[$keyField], $valueField);
+                break;
+            case static::TYPE_FIELD_DATETIME:
+            case static::TYPE_FIELD_DATE:
+            case static::TYPE_FIELD_ENUMERATION:
+            case static::TYPE_FIELD_CRM_CURRENCY:
+            case static::TYPE_FIELD_CRM_COMPANY:
+            case static::TYPE_FIELD_CRM_CONTACT:
+            case static::TYPE_FIELD_CRM_ENTITY:
+            case static::TYPE_FIELD_CRM_LEAD:
+            case static::TYPE_FIELD_INTEGER:
+            case static::TYPE_FIELD_EMPLOYEE:
+            case static::TYPE_FIELD_USER:
+            case static::TYPE_FIELD_DOUBLE:
+            case static::TYPE_FIELD_LOCATION:
+            case static::TYPE_FIELD_STRING:
+            case static::TYPE_FIELD_CHAR:
+            case static::TYPE_FIELD_FILE:
+                break;
+        }
+        $resultComparingFields[ 'NAME' ] = $this->getDealFields()[ $keyField ][ 'NAME' ];
+        $resultComparingFields[ 'CODE' ] = $keyField;
+        $resultComparingFields[ 'TYPE' ] = $this->getDealFields()[ $keyField ][ 'TYPE' ];
+        $resultComparingFields[ 'RESULT_COMPARISON' ] = $resultComparing;
+
+        return $resultComparingFields;
+    }
+
+    final public function comparingStageDeal(string $old, string $new): array
+    {
+        $resultComparing = [];
+
+        $categoryOld = DealCategory::getStageInfos(DealCategory::resolveFromStageID($old))[ $old ];
+        $categoryNew = DealCategory::getStageInfos(DealCategory::resolveFromStageID($new))[ $new ];
+
+        if ($old != $new && !empty($old) && !empty($new)) {
+            $resultComparing[ 'OLD' ][] = [
+                'VALUE' => $categoryOld[ 'NAME' ],
+                'COLOR' => $categoryOld[ 'COLOR' ],
+                'ID'    => $old
+            ];
+            $resultComparing[ 'NEW' ][] = [
+                'VALUE' => $categoryNew[ 'NAME' ],
+                'COLOR' => $categoryNew[ 'COLOR' ],
+                'ID'    => $new
+            ];
+        } elseif (empty($old)) {
+            $resultComparing[ 'OLD' ][] = [
+                'VALUE' => 'новое значение',
+            ];
+            $resultComparing[ 'NEW' ][] = [
+                'VALUE' => $categoryNew[ 'NAME' ],
+                'COLOR' => $categoryNew[ 'COLOR' ],
+                'ID'    => $new
+            ];
+        } elseif (empty($new)) {
+            $resultComparing[ 'OLD' ][] = [
+                'VALUE' => $categoryOld[ 'NAME' ],
+                'COLOR' => $categoryOld[ 'COLOR' ],
+                'ID'    => $old
+            ];
+            $resultComparing[ 'NEW' ][] = [
+                'VALUE' => 'удалено значение',
+            ];
+        }else{
+            $resultComparing[ 'OLD' ][] = [
+                'VALUE' => false,
+            ];
+            $resultComparing[ 'NEW' ][] = [
+                'VALUE' => false,
+            ];
+        }
+
+        return $resultComparing;
+    }
+    final public function comparingCategoryDeal(string $old, string $new): array
+    {
+        $resultComparing = [];
+
+        if ($old != $new && !empty($old) && !empty($new)) {
+            $resultComparing[ 'OLD' ][] = [
+                'VALUE' => DealCategory::getName($old),
+                'ID'    => $old
+            ];
+            $resultComparing[ 'NEW' ][] = [
+                'VALUE' => DealCategory::getName($new),
+                'ID'    => $new
+            ];
+        } elseif (empty($old)) {
+            $resultComparing[ 'OLD' ][] = [
+                'VALUE' => 'новое значение',
+            ];
+            $resultComparing[ 'NEW' ][] = [
+                'VALUE' => DealCategory::getName($new),
+                'ID'    => $new
+            ];
+        } elseif (empty($new)) {
+            $resultComparing[ 'OLD' ][] = [
+                'VALUE' => DealCategory::getName($old),
+                'ID'    => $old
+            ];
+            $resultComparing[ 'NEW' ][] = [
+                'VALUE' => 'удалено значение',
+            ];
+        }else{
+            $resultComparing[ 'OLD' ][] = [
+                'VALUE' => false,
+            ];
+            $resultComparing[ 'NEW' ][] = [
+                'VALUE' => false,
+            ];
+        }
+
+        return $resultComparing;
+    }
+
 }
 
 
